@@ -28,7 +28,12 @@ export default defineConfig({
             console.log('Proxy error - using mock service instead');
           });
         }
-      }
+      },
+      '/api/tenant-platform': {
+        target: 'http://localhost:8001',
+        changeOrigin: true,
+        secure: false,
+      },
     }
   },
   optimizeDeps: {
