@@ -6,13 +6,15 @@ import Layout from './components/Layout/Layout';
 import { LangGraphBuilder } from './components/LangGraph/LangGraphBuilder';
 import { LangGraphDashboard } from './components/LangGraph/LangGraphDashboard';
 import { NodeBuilder } from './components/NodeBuilder/NodeBuilder';
-import { MyNodesPage } from '../TenantNodePlatform/frontend/MyNodesPage';
+import { MyNodesPage } from './TenantNodePlatform/MyNodesPage';
+import { TenantLoginPage } from './TenantNodePlatform/TenantLoginPage';
 
 function App() {
   return (
     <ThemeProvider>
       <Router>
         <Routes>
+          <Route path="/login" element={<TenantLoginPage />} />
           <Route path="/" element={<Layout />}>
             <Route index element={<Navigate to="/langgraph" replace />} />
             <Route path="/langgraph" element={<LangGraphDashboard />} />

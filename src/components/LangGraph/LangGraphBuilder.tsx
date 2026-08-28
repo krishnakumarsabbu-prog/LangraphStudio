@@ -25,9 +25,9 @@ import { WorkflowConfigModal } from './WorkflowConfigModal';
 import { ProgrammaticGeneratorModal } from './ProgrammaticGeneratorModal';
 import { WhatIfScenarioStudio } from './WhatIfScenarioStudio';
 import { ObjectMapperModal } from './ObjectMapperModal';
-import { useTnpStore } from '../../../TenantNodePlatform/frontend/tnpStore';
+import { useTnpStore } from '../../TenantNodePlatform/tnpStore';
 import { materializeBlueprint } from '../../services/blueprintMaterializationService';
-import type { Blueprint } from '../../../TenantNodePlatform/frontend/types';
+import type { Blueprint } from '../../TenantNodePlatform/types';
 import { Package } from 'lucide-react';
 
 const nodeTypes = {

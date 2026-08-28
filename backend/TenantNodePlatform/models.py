@@ -33,6 +33,57 @@ class SourceType(str, enum.Enum):
     GRAPH = "graph"
 
 
+class UserRole(str, enum.Enum):
+    SUPER_ADMIN = "SUPER_ADMIN"
+    TENANT_ADMIN = "TENANT_ADMIN"
+    TENANT_USER = "TENANT_USER"
+    TENANT_VIEWER = "TENANT_VIEWER"
+
+
+# --------------------------------------------------------------------------- #
+# User & Authentication Models
+# --------------------------------------------------------------------------- #
+
+class UserProfile(BaseModel):
+    id: str
+    name: str
+    email: str
+    role: UserRole
+    tenant_id: str
+    tenant_name: str
+    avatar: Optional[str] = "👤"
+    title: Optional[str] = ""
+
+
+class User(UserProfile):
+    password_hash: str
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str = ""
+    tenant_id: Optional[str] = None
+
+
+class LoginResponse(BaseModel):
+    success: bool
+    token: str
+    user: UserProfile
+    available_tenants: List[Tenant]
+
+
+class PersonaItem(BaseModel):
+    key: str
+    name: str
+    email: str
+    role: UserRole
+    tenant_id: str
+    tenant_name: str
+    title: str
+    avatar: str
+    description: str
+
+
 # --------------------------------------------------------------------------- #
 # Tenant
 # --------------------------------------------------------------------------- #
@@ -40,18 +91,27 @@ class SourceType(str, enum.Enum):
 class TenantBase(BaseModel):
     tenant_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     tenant_name: str
+    slug: str = ""
     status: TenantStatus = TenantStatus.ACTIVE
+    category: str = "Enterprise"
+    description: str = ""
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
 class TenantCreate(BaseModel):
     tenant_name: str
+    slug: Optional[str] = None
+    category: Optional[str] = None
+    description: Optional[str] = None
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
 class TenantUpdate(BaseModel):
     tenant_name: Optional[str] = None
+    slug: Optional[str] = None
     status: Optional[TenantStatus] = None
+    category: Optional[str] = None
+    description: Optional[str] = None
     metadata: Optional[Dict[str, Any]] = None
 
 
@@ -98,6 +158,10 @@ class Blueprint(BaseModel):
     created_by: str = "system"
     created_at: dt.datetime = Field(default_factory=lambda: dt.datetime.now(dt.UTC))
     updated_at: dt.datetime = Field(default_factory=lambda: dt.datetime.now(dt.UTC))
+
+
+class BatchImportRequest(BaseModel):
+    blueprints: List[Dict[str, Any]]
 
 
 # --------------------------------------------------------------------------- #
