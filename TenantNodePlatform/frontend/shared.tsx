@@ -453,7 +453,4 @@ export const BlueprintOriginBadge: React.FC<{
       </p>
     </div>
   </div>
-);
-
-
-export { ModalShell }
+);
