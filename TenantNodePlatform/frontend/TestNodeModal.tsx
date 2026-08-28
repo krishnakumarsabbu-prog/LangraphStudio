@@ -1,12 +1,33 @@
 import React, { useState, useMemo } from 'react';
-import { Play, Loader2, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
+import { Play, CheckCircle, XCircle, AlertCircle, Loader2, FileJson } from 'lucide-react';
 import * as api from './tnpService';
 import type { Blueprint } from './types';
-import { ModalShell, SectionTitle, JsonViewer, EmptyHint } from './shared';
+import { ModalShell, SectionTitle, JsonViewer, EmptyHint, ErrorBanner } from './shared';
 
 interface TestNodeModalProps {
   blueprint: Blueprint;
   onClose: () => void;
+}
+
+// Business-friendly error messages
+function friendlyTestError(err: unknown): string {
+  if (err instanceof SyntaxError) {
+    return 'The test input is not valid JSON. Please check for missing commas, quotes, or brackets and try again.';
+  }
+  if (err instanceof Error) {
+    const msg = err.message;
+    if (msg.includes('422')) {
+      return 'This blueprint cannot be tested because its configuration contains invalid fields. Please review the blueprint in the Node Builder.';
+    }
+    if (msg.includes('403') || msg.includes('forbidden')) {
+      return 'You do not have permission to test this blueprint. Only published blueprints can be materialized.';
+    }
+    if (msg.includes('Network Error') || msg.includes('timeout')) {
+      return 'Unable to reach the test server. Please check your connection and try again.';
+    }
+    return msg;
+  }
+  return 'Test failed unexpectedly. Please try again.';
 }
 
 export const TestNodeModal: React.FC<TestNodeModalProps> = ({
@@ -50,7 +71,6 @@ export const TestNodeModal: React.FC<TestNodeModalProps> = ({
     setResult(null);
     try {
       const parsed = JSON.parse(inputJson);
-      // Materialize the blueprint to get the graph, then show the result
       const materialized = await api.materializeBlueprint(blueprint.blueprint_id);
       setResult({
         status: 'success',
@@ -61,13 +81,7 @@ export const TestNodeModal: React.FC<TestNodeModalProps> = ({
         input: parsed,
       });
     } catch (err: unknown) {
-      if (err instanceof SyntaxError) {
-        setError('Invalid JSON input. Please check your syntax.');
-      } else {
-        const msg =
-          err instanceof Error ? err.message : 'Test failed';
-        setError(msg);
-      }
+      setError(friendlyTestError(err));
     } finally {
       setLoading(false);
     }
@@ -83,12 +97,15 @@ export const TestNodeModal: React.FC<TestNodeModalProps> = ({
       <div className="space-y-5">
         {/* Warning for non-published */}
         {!canMaterialize && (
-          <div className="flex items-start gap-2 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg text-yellow-700 dark:text-yellow-400 text-sm">
-            <AlertCircle size={16} className="flex-shrink-0 mt-0.5" />
-            <span>
-              Only published blueprints can be materialized. This blueprint is{' '}
-              <strong>{blueprint.status}</strong>. Publish it first to run a full test.
-            </span>
+          <div className="flex items-start gap-3 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg text-amber-700 dark:text-amber-400 text-sm">
+            <AlertCircle size={18} className="flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="font-semibold mb-0.5">Publishing required for full testing</p>
+              <p>
+                Only published blueprints can be materialized. This blueprint is currently{' '}
+                <strong>{blueprint.status}</strong>. Publish it first to run a full materialization test.
+              </p>
+            </div>
           </div>
         )}
 
@@ -112,46 +129,66 @@ export const TestNodeModal: React.FC<TestNodeModalProps> = ({
             className="flex items-center gap-2 px-4 py-2.5 bg-black dark:bg-white text-white dark:text-black rounded-lg text-sm font-medium hover:bg-gray-800 dark:hover:bg-gray-200 transition-all disabled:opacity-50"
           >
             {loading ? (
-              <Loader2 size={16} className="animate-spin" />
+              <>
+                <Loader2 size={16} className="animate-spin" />
+                Running Test...
+              </>
             ) : (
-              <Play size={16} />
+              <>
+                <Play size={16} />
+                Run Test
+              </>
             )}
-            Run Test
           </button>
         </div>
 
         {/* Error */}
         {error && (
-          <div className="flex items-start gap-2 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-red-700 dark:text-red-400 text-sm">
-            <XCircle size={16} className="flex-shrink-0 mt-0.5" />
-            {error}
-          </div>
+          <ErrorBanner message={error} />
         )}
 
         {/* Result */}
         {result && (
-          <div>
-            <SectionTitle>Result</SectionTitle>
-            <div className="flex items-center gap-2 mb-3 text-green-700 dark:text-green-400">
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 text-green-700 dark:text-green-400">
               <CheckCircle size={18} />
               <span className="text-sm font-medium">Materialization successful</span>
             </div>
-            <JsonViewer data={result} />
+            <div className="bg-green-50 dark:bg-green-900/10 border border-green-200 dark:border-green-800 rounded-lg p-4 space-y-2">
+              <div className="flex items-center gap-2 text-sm">
+                <span className="font-semibold text-light-text-secondary dark:text-dark-text-secondary">Blueprint:</span>
+                <span className="text-light-text-primary dark:text-dark-text-primary">
+                  {(result as Record<string, unknown>).blueprint_name as string}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 text-sm">
+                <span className="font-semibold text-light-text-secondary dark:text-dark-text-secondary">Version:</span>
+                <span className="font-mono text-light-text-primary dark:text-dark-text-primary">
+                  v{(result as Record<string, unknown>).version as number}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 text-sm">
+                <span className="font-semibold text-light-text-secondary dark:text-dark-text-secondary">Nodes:</span>
+                <span className="text-light-text-primary dark:text-dark-text-primary">
+                  {((result as Record<string, unknown>).graph as Record<string, unknown[]>)?.nodes?.length ?? 0} nodes,
+                  {' '}{((result as Record<string, unknown>).graph as Record<string, unknown[]>)?.edges?.length ?? 0} edges
+                </span>
+              </div>
+            </div>
+            <JsonViewer data={result} label="View full result (JSON)" />
           </div>
         )}
 
-        {/* Graph preview */}
-        {graph?.nodes && graph.nodes.length > 0 && (
+        {/* Graph definition — collapsed by default (advanced/debug view) */}
+        {graph?.nodes && graph.nodes.length > 0 ? (
           <div>
-            <SectionTitle>Graph Definition</SectionTitle>
-            <JsonViewer data={graph} />
+            <SectionTitle>Graph Definition (Advanced)</SectionTitle>
+            <JsonViewer data={graph} label="Show graph JSON" />
           </div>
-        )}
-
-        {!graph?.nodes && (
+        ) : (
           <div>
             <SectionTitle>Graph Definition</SectionTitle>
-            <EmptyHint>No graph definition available.</EmptyHint>
+            <EmptyHint icon={<FileJson size={24} />}>No graph definition available.</EmptyHint>
           </div>
         )}
       </div>

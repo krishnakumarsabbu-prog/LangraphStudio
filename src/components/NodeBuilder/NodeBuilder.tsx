@@ -11,7 +11,7 @@
  *   RIGHT:  properties / configuration panel
  */
 
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import ReactFlow, {
   Background,
   Controls,
@@ -37,6 +37,8 @@ import {
   Plus,
   AlertCircle,
   XCircle,
+  Layers,
+  Settings,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useNodeBuilderStore } from './store';
@@ -348,7 +350,9 @@ export const NodeBuilder: React.FC = () => {
     }
   };
 
-  const handlePublish = async () => {
+  const [showPublishConfirm, setShowPublishConfirm] = useState(false);
+
+  const handlePublish = () => {
     if (!document.blueprintId) {
       toast.error('Save the blueprint before publishing.');
       return;
@@ -362,8 +366,13 @@ export const NodeBuilder: React.FC = () => {
       return;
     }
 
+    setShowPublishConfirm(true);
+  };
+
+  const confirmPublish = async () => {
+    setShowPublishConfirm(false);
     try {
-      await blueprintService.publishBlueprint(document.blueprintId);
+      await blueprintService.publishBlueprint(document.blueprintId!);
       store.setMetadata({ status: 'PUBLISHED' });
       toast.success('Blueprint published successfully.');
     } catch (err: any) {
@@ -520,10 +529,14 @@ export const NodeBuilder: React.FC = () => {
       {/* Main 3-column layout */}
       <div className="flex-1 flex min-h-0">
         {/* LEFT: Palette */}
-        <div className="w-56 flex-shrink-0 bg-white dark:bg-dark-surface border-r border-light-border dark:border-dark-border p-3 space-y-2 overflow-y-auto scrollbar-thin">
-          <h3 className="text-[10px] font-bold uppercase tracking-wide text-light-text-secondary dark:text-dark-text-secondary px-1 mb-1">
-            Framework Nodes
-          </h3>
+        <div className="w-56 flex-shrink-0 bg-white dark:bg-dark-surface border-r border-light-border dark:border-dark-border flex flex-col">
+          <div className="flex items-center gap-2 px-3 py-2.5 border-b border-light-border dark:border-dark-border">
+            <Layers size={14} className="text-light-text-secondary dark:text-dark-text-secondary" />
+            <h3 className="text-[10px] font-bold uppercase tracking-wide text-light-text-secondary dark:text-dark-text-secondary">
+              Framework Nodes
+            </h3>
+          </div>
+          <div className="p-3 space-y-2 overflow-y-auto scrollbar-thin flex-1">
           {PALETTE_ITEMS.map((item) => (
             <button
               key={item.type}
@@ -547,10 +560,18 @@ export const NodeBuilder: React.FC = () => {
               Click a node above to add it to the canvas. Then drag from a node's right handle to another node's left handle to connect them.
             </p>
           </div>
+          </div>
         </div>
 
         {/* CENTER: Canvas */}
-        <div className="flex-1 min-w-0 relative">
+        <div className="flex-1 min-w-0 relative flex flex-col">
+          <div className="flex items-center gap-2 px-3 py-2.5 border-b border-light-border dark:border-dark-border bg-white dark:bg-dark-surface">
+            <GitBranch size={14} className="text-light-text-secondary dark:text-dark-text-secondary" />
+            <h3 className="text-[10px] font-bold uppercase tracking-wide text-light-text-secondary dark:text-dark-text-secondary">
+              Blueprint Canvas
+            </h3>
+          </div>
+          <div className="flex-1 min-w-0 relative">
           <ReactFlow
             nodes={rfNodes}
             edges={rfEdges}
@@ -571,27 +592,80 @@ export const NodeBuilder: React.FC = () => {
           </ReactFlow>
 
           {document.nodes.length === 0 && (
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-              <div className="text-center">
-                <div className="w-16 h-16 rounded-2xl bg-light-surface dark:bg-dark-surface-alt flex items-center justify-center mx-auto mb-4 border border-dashed border-light-border dark:border-dark-border">
-                  <Plus className="w-8 h-8 text-light-border dark:text-dark-border" />
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                <div className="text-center">
+                  <div className="w-16 h-16 rounded-2xl bg-light-surface dark:bg-dark-surface-alt flex items-center justify-center mx-auto mb-4 border border-dashed border-light-border dark:border-dark-border">
+                    <Plus className="w-8 h-8 text-light-border dark:text-dark-border" />
+                  </div>
+                  <h3 className="text-sm font-bold text-light-text-secondary dark:text-dark-text-secondary">
+                    Empty Blueprint Canvas
+                  </h3>
+                  <p className="text-xs text-light-text-secondary dark:text-dark-text-secondary mt-1">
+                    Add framework nodes from the palette to start building.
+                  </p>
                 </div>
-                <h3 className="text-sm font-bold text-light-text-secondary dark:text-dark-text-secondary">
-                  Empty Blueprint Canvas
-                </h3>
-                <p className="text-xs text-light-text-secondary dark:text-dark-text-secondary mt-1">
-                  Add framework nodes from the palette to start building.
-                </p>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
         {/* RIGHT: Properties Panel */}
-        <div className="w-80 flex-shrink-0 bg-white dark:bg-dark-surface border-l border-light-border dark:border-dark-border properties-panel">
-          <PropertiesPanel />
+        <div className="w-80 flex-shrink-0 bg-white dark:bg-dark-surface border-l border-light-border dark:border-dark-border properties-panel flex flex-col">
+          <div className="flex items-center gap-2 px-3 py-2.5 border-b border-light-border dark:border-dark-border">
+            <Settings size={14} className="text-light-text-secondary dark:text-dark-text-secondary" />
+            <h3 className="text-[10px] font-bold uppercase tracking-wide text-light-text-secondary dark:text-dark-text-secondary">
+              Configuration
+            </h3>
+          </div>
+          <div className="flex-1 overflow-hidden">
+            <PropertiesPanel />
+          </div>
         </div>
       </div>
+
+      {/* Publish Confirmation Dialog */}
+      {showPublishConfirm && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm"
+          onClick={() => setShowPublishConfirm(false)}
+        >
+          <div
+            className="relative w-full max-w-md mx-4 bg-white dark:bg-dark-surface rounded-2xl shadow-2xl border border-light-border dark:border-dark-border"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-6">
+              <div className="flex items-start gap-4 mb-4">
+                <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
+                  <Upload size={20} className="text-green-600 dark:text-green-400" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-base font-bold text-light-text-primary dark:text-dark-text-primary mb-1">
+                    Publish Blueprint
+                  </h3>
+                  <p className="text-sm text-light-text-secondary dark:text-dark-text-secondary">
+                    Publish "{document.metadata.name}" v{document.metadata.version}? Once published, this version becomes immutable. Future edits will create a new draft version.
+                  </p>
+                </div>
+              </div>
+              <div className="flex justify-end gap-3 mt-6">
+                <button
+                  onClick={() => setShowPublishConfirm(false)}
+                  className="px-4 py-2.5 text-sm font-medium text-light-text-secondary dark:text-dark-text-secondary border border-light-border dark:border-dark-border rounded-lg hover:bg-light-hover dark:hover:bg-dark-hover transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmPublish}
+                  className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium bg-green-600 hover:bg-green-700 text-white rounded-lg transition-all"
+                >
+                  <Upload size={16} />
+                  Publish
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

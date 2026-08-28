@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Plus, Loader2 } from 'lucide-react';
+import { Plus, Loader2, AlertCircle } from 'lucide-react';
+import toast from 'react-hot-toast';
 import * as api from './tnpService';
 import type { SourceType } from './types';
 import { ModalShell } from './shared';
@@ -10,14 +11,14 @@ interface CreateNodeModalProps {
   onCreated: () => void;
 }
 
-const sourceTypes: { value: SourceType; label: string }[] = [
-  { value: 'graph', label: 'Graph (Composite)' },
-  { value: 'service', label: 'Service' },
-  { value: 'decision', label: 'Decision' },
-  { value: 'form', label: 'Form' },
-  { value: 'workflow', label: 'Workflow' },
-  { value: 'llm', label: 'LLM' },
-  { value: 'mapper', label: 'Mapper' },
+const sourceTypes: { value: SourceType; label: string; description: string }[] = [
+  { value: 'graph', label: 'Graph (Composite)', description: 'Multi-node composition' },
+  { value: 'service', label: 'Service', description: 'HTTP API call' },
+  { value: 'decision', label: 'Decision', description: 'Business rules engine' },
+  { value: 'form', label: 'Form', description: 'User input form' },
+  { value: 'workflow', label: 'Workflow', description: 'Process workflow' },
+  { value: 'llm', label: 'LLM', description: 'Language model' },
+  { value: 'mapper', label: 'Mapper', description: 'Data transformation' },
 ];
 
 export const CreateNodeModal: React.FC<CreateNodeModalProps> = ({
@@ -35,7 +36,7 @@ export const CreateNodeModal: React.FC<CreateNodeModalProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) {
-      setError('Node name is required');
+      setError('Node name is required. Please enter a descriptive name for your blueprint.');
       return;
     }
     setLoading(true);
@@ -47,11 +48,19 @@ export const CreateNodeModal: React.FC<CreateNodeModalProps> = ({
         source_type: sourceType,
         created_by: createdBy.trim() || 'system',
       });
+      toast.success(`Node "${name.trim()}" created successfully.`);
       onCreated();
     } catch (err: unknown) {
       const msg =
-        err instanceof Error ? err.message : 'Failed to create node';
-      setError(msg);
+        err instanceof Error ? err.message : 'Failed to create node. Please try again.';
+      // Business-friendly error
+      if (msg.includes('422')) {
+        setError('This node cannot be created because some required information is missing. Please review the form and try again.');
+      } else if (msg.includes('Network Error') || msg.includes('timeout')) {
+        setError('Unable to reach the server. Please check your connection and try again.');
+      } else {
+        setError(msg);
+      }
     } finally {
       setLoading(false);
     }
@@ -101,7 +110,7 @@ export const CreateNodeModal: React.FC<CreateNodeModalProps> = ({
           >
             {sourceTypes.map((st) => (
               <option key={st.value} value={st.value}>
-                {st.label}
+                {st.label} — {st.description}
               </option>
             ))}
           </select>
@@ -123,8 +132,9 @@ export const CreateNodeModal: React.FC<CreateNodeModalProps> = ({
 
         {/* Error */}
         {error && (
-          <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-red-700 dark:text-red-400 text-sm">
-            {error}
+          <div className="flex items-start gap-2 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-red-700 dark:text-red-400 text-sm">
+            <AlertCircle size={16} className="flex-shrink-0 mt-0.5" />
+            <span>{error}</span>
           </div>
         )}
 

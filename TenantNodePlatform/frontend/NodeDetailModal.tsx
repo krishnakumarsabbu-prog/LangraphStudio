@@ -1,17 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import {
-  Loader2,
-  AlertCircle,
-  ExternalLink,
-  GitBranch,
-  ArrowRight,
-  Circle,
-  Square,
-  Diamond,
-  FileText,
-  Cpu,
-  Workflow,
-} from 'lucide-react';
+import { AlertCircle, ExternalLink, GitBranch, ArrowRight, Circle, Square, Diamond, FileText, Cpu, Workflow, ChevronDown, ChevronRight, CheckCircle2, File as FileEdit } from 'lucide-react';
 import * as api from './tnpService';
 import type { Blueprint, BlueprintVersion, BlueprintDependency } from './types';
 import {
@@ -21,7 +9,12 @@ import {
   InfoRow,
   JsonViewer,
   EmptyHint,
+  LoadingState,
+  ErrorBanner,
+  BlueprintOriginBadge,
+  BusinessRuleDisplay,
 } from './shared';
+import { isRuleGroup, RuleTreeNode, RuleConditionGroup, RuleConditionLeaf } from '../../src/components/NodeBuilder/types';
 
 interface NodeDetailModalProps {
   blueprint: Blueprint;
@@ -51,6 +44,53 @@ const formatDate = (iso: string) => {
   } catch {
     return '—';
   }
+};
+
+// Convert raw rule data from backend into a RuleTreeNode for display
+function extractRuleNode(raw: unknown): RuleTreeNode | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const obj = raw as Record<string, unknown>;
+  if ('rules' in obj && 'operator' in obj) {
+    return {
+      operator: obj.operator as 'AND' | 'OR' | 'NOT',
+      rules: (obj.rules as unknown[]).map(extractRuleNode).filter(Boolean) as RuleTreeNode[],
+    } as RuleConditionGroup;
+  }
+  if ('field' in obj && 'operator' in obj) {
+    return {
+      field: obj.field as string,
+      operator: obj.operator as string,
+      value: obj.value,
+    } as RuleConditionLeaf;
+  }
+  return null;
+}
+
+// Collapsible section component
+const CollapsibleSection: React.FC<{
+  title: string;
+  children: React.ReactNode;
+  defaultOpen?: boolean;
+}> = ({ title, children, defaultOpen = true }) => {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div>
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-1.5 w-full mb-3 group"
+      >
+        {open ? (
+          <ChevronDown size={14} className="text-light-text-secondary dark:text-dark-text-secondary" />
+        ) : (
+          <ChevronRight size={14} className="text-light-text-secondary dark:text-dark-text-secondary" />
+        )}
+        <h3 className="text-xs font-semibold text-light-text-secondary dark:text-dark-text-secondary uppercase tracking-wider group-hover:text-light-text-primary dark:group-hover:text-dark-text-primary transition-colors">
+          {title}
+        </h3>
+      </button>
+      {open && children}
+    </div>
+  );
 };
 
 export const NodeDetailModal: React.FC<NodeDetailModalProps> = ({
@@ -102,10 +142,14 @@ export const NodeDetailModal: React.FC<NodeDetailModalProps> = ({
   const decisionNodes = nodes.filter(
     (n) => (n as Record<string, unknown>).type === 'decision'
   );
-  const businessRules = decisionNodes.flatMap((n) => {
+  const businessRules = decisionNodes.map((n, idx) => {
     const data = (n as Record<string, unknown>).data as Record<string, unknown> | undefined;
-    const rules = data?.rules as unknown[] | undefined;
-    return rules ?? [];
+    const config = data?.config as Record<string, unknown> | undefined;
+    const ruleDef = config?.ruleDefinition as Record<string, unknown> | undefined;
+    const conditions = ruleDef?.conditions as unknown;
+    const outcomes = ruleDef?.outcomes as { true?: string; false?: string } | undefined;
+    const label = (data?.label as string) ?? `Decision ${idx + 1}`;
+    return { label, conditions, outcomes, defaultOutcome: ruleDef?.defaultOutcome as string };
   });
 
   return (
@@ -116,16 +160,11 @@ export const NodeDetailModal: React.FC<NodeDetailModalProps> = ({
       maxWidth="max-w-4xl"
     >
       {loading ? (
-        <div className="flex items-center justify-center py-16">
-          <Loader2 size={24} className="animate-spin text-light-text-secondary dark:text-dark-text-secondary" />
-        </div>
+        <LoadingState label="Loading blueprint details..." />
       ) : (
         <div className="space-y-6">
           {error && (
-            <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex items-center gap-2 text-red-700 dark:text-red-400 text-sm">
-              <AlertCircle size={16} />
-              {error}
-            </div>
+            <ErrorBanner message={error} />
           )}
 
           {/* Status + Open in Builder */}
@@ -140,9 +179,17 @@ export const NodeDetailModal: React.FC<NodeDetailModalProps> = ({
             </button>
           </div>
 
+          {/* Blueprint Origin (for materialized nodes) */}
+          {blueprint.status === 'PUBLISHED' && (
+            <BlueprintOriginBadge
+              blueprintName={blueprint.name}
+              sourceVersion={`v${blueprint.version}`}
+              materialized={true}
+            />
+          )}
+
           {/* Metadata */}
-          <div>
-            <SectionTitle>Blueprint Metadata</SectionTitle>
+          <CollapsibleSection title="Blueprint Metadata">
             <div className="bg-light-surface dark:bg-dark-surface-alt border border-light-border dark:border-dark-border rounded-lg px-4">
               <InfoRow label="Name" value={blueprint.name} />
               <InfoRow label="Blueprint ID" value={<code className="text-xs font-mono">{blueprint.blueprint_id}</code>} />
@@ -156,13 +203,12 @@ export const NodeDetailModal: React.FC<NodeDetailModalProps> = ({
                 <InfoRow label="Description" value={blueprint.description} />
               )}
             </div>
-          </div>
+          </CollapsibleSection>
 
           {/* Internal Graph Preview */}
-          <div>
-            <SectionTitle>Internal Graph Preview</SectionTitle>
+          <CollapsibleSection title="Internal Graph Preview">
             {nodes.length === 0 ? (
-              <EmptyHint>No graph nodes defined yet.</EmptyHint>
+              <EmptyHint icon={<Circle size={24} />}>No graph nodes defined yet.</EmptyHint>
             ) : (
               <div className="bg-light-surface dark:bg-dark-surface-alt border border-light-border dark:border-dark-border rounded-lg p-4">
                 {/* Nodes */}
@@ -209,12 +255,60 @@ export const NodeDetailModal: React.FC<NodeDetailModalProps> = ({
                 )}
               </div>
             )}
-          </div>
+          </CollapsibleSection>
+
+          {/* Business Rules — readable format */}
+          {businessRules.length > 0 && (
+            <CollapsibleSection title="Business Rules">
+              <div className="space-y-4">
+                {businessRules.map((rule, idx) => (
+                  <div
+                    key={idx}
+                    className="bg-light-surface dark:bg-dark-surface-alt border border-light-border dark:border-dark-border rounded-lg p-4"
+                  >
+                    <div className="flex items-center gap-2 mb-3">
+                      <GitBranch size={14} className="text-light-text-secondary dark:text-dark-text-secondary" />
+                      <span className="text-sm font-semibold text-light-text-primary dark:text-dark-text-primary">
+                        {rule.label}
+                      </span>
+                    </div>
+                    {/* IF block */}
+                    <div className="space-y-2 mb-3">
+                      <div className="text-[10px] font-bold text-light-text-secondary dark:text-dark-text-secondary uppercase tracking-wider">
+                        IF
+                      </div>
+                      {rule.conditions ? (
+                        <BusinessRuleDisplay rule={extractRuleNode(rule.conditions) ?? { operator: 'AND', rules: [] }} />
+                      ) : (
+                        <EmptyHint>No conditions defined.</EmptyHint>
+                      )}
+                    </div>
+                    {/* THEN / ELSE */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-green-50 dark:bg-green-900/10 border border-green-200 dark:border-green-800">
+                        <CheckCircle2 size={14} className="text-green-600 dark:text-green-400" />
+                        <span className="text-[10px] font-bold text-green-700 dark:text-green-400 uppercase">Then</span>
+                        <span className="text-sm font-semibold text-light-text-primary dark:text-dark-text-primary">
+                          {rule.outcomes?.true || '—'}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800">
+                        <FileEdit size={14} className="text-amber-600 dark:text-amber-400" />
+                        <span className="text-[10px] font-bold text-amber-700 dark:text-amber-400 uppercase">Else</span>
+                        <span className="text-sm font-semibold text-light-text-primary dark:text-dark-text-primary">
+                          {rule.outcomes?.false || '—'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CollapsibleSection>
+          )}
 
           {/* Inputs / Outputs */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <SectionTitle>Inputs</SectionTitle>
+            <CollapsibleSection title="Inputs">
               {Object.keys(inputs).length === 0 &&
               Object.keys(blueprint.input_contract).length === 0 ? (
                 <EmptyHint>No inputs defined.</EmptyHint>
@@ -225,22 +319,21 @@ export const NodeDetailModal: React.FC<NodeDetailModalProps> = ({
                       ? inputs
                       : blueprint.input_contract
                   }
+                  label="View input schema (JSON)"
                 />
               )}
-            </div>
-            <div>
-              <SectionTitle>Outputs</SectionTitle>
+            </CollapsibleSection>
+            <CollapsibleSection title="Outputs">
               {Object.keys(blueprint.output_contract).length === 0 ? (
                 <EmptyHint>No outputs defined.</EmptyHint>
               ) : (
-                <JsonViewer data={blueprint.output_contract} />
+                <JsonViewer data={blueprint.output_contract} label="View output schema (JSON)" />
               )}
-            </div>
+            </CollapsibleSection>
           </div>
 
           {/* Dependencies */}
-          <div>
-            <SectionTitle>Dependencies</SectionTitle>
+          <CollapsibleSection title="Dependencies" defaultOpen={dependencies.length > 0}>
             {dependencies.length === 0 ? (
               <EmptyHint>No dependencies.</EmptyHint>
             ) : (
@@ -258,58 +351,67 @@ export const NodeDetailModal: React.FC<NodeDetailModalProps> = ({
                 ))}
               </div>
             )}
-          </div>
+          </CollapsibleSection>
 
-          {/* Configuration Summary */}
-          <div>
-            <SectionTitle>Configuration Summary</SectionTitle>
+          {/* Configuration Summary — collapsed by default (advanced/debug view) */}
+          <CollapsibleSection title="Configuration Summary (Advanced)" defaultOpen={false}>
             <JsonViewer data={graph} />
-          </div>
+          </CollapsibleSection>
 
-          {/* Business Rules */}
-          <div>
-            <SectionTitle>Business Rules</SectionTitle>
-            {businessRules.length === 0 ? (
-              <EmptyHint>No business rules defined.</EmptyHint>
-            ) : (
-              <div className="bg-light-surface dark:bg-dark-surface-alt border border-light-border dark:border-dark-border rounded-lg p-4 space-y-2">
-                {businessRules.map((rule, idx) => (
-                  <div key={idx} className="text-xs">
-                    <JsonViewer data={rule} label={`Rule ${idx + 1}`} />
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Version History */}
-          <div>
-            <SectionTitle>Version History</SectionTitle>
+          {/* Version History Timeline */}
+          <CollapsibleSection title="Version History">
             {versions.length === 0 ? (
               <EmptyHint>No version history.</EmptyHint>
             ) : (
-              <div className="bg-light-surface dark:bg-dark-surface-alt border border-light-border dark:border-dark-border rounded-lg overflow-hidden">
-                {versions.map((v, idx) => (
-                  <div
-                    key={idx}
-                    className="flex items-center justify-between px-4 py-3 border-b border-light-border dark:border-dark-border last:border-0"
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className="font-mono text-sm font-medium text-light-text-primary dark:text-dark-text-primary">
-                        v{v.version}
-                      </span>
-                      <span className="text-xs text-light-text-secondary dark:text-dark-text-secondary">
-                        by {v.created_by}
-                      </span>
+              <div className="relative pl-6">
+                {/* Timeline line */}
+                <div className="absolute left-2 top-2 bottom-2 w-0.5 bg-light-border dark:bg-dark-border" />
+                {versions.map((v, idx) => {
+                  const snapshot = v.snapshot as Record<string, unknown>;
+                  const status = snapshot.status as string;
+                  const isCurrent = v.version === blueprint.version;
+                  return (
+                    <div
+                      key={idx}
+                      className={`relative pb-4 ${idx === versions.length - 1 ? 'pb-0' : ''}`}
+                    >
+                      {/* Timeline dot */}
+                      <div
+                        className={`absolute -left-4 top-1 w-3 h-3 rounded-full border-2 ${
+                          status === 'PUBLISHED'
+                            ? 'bg-green-500 border-green-500'
+                            : status === 'DEPRECATED'
+                            ? 'bg-gray-400 border-gray-400'
+                            : 'bg-blue-500 border-blue-500'
+                        }`}
+                      />
+                      <div className={`flex items-center justify-between ${isCurrent ? 'bg-blue-50 dark:bg-blue-900/10 rounded-lg px-3 py-2 -ml-3' : ''}`}>
+                        <div className="flex items-center gap-3">
+                          <span className="font-mono text-sm font-medium text-light-text-primary dark:text-dark-text-primary">
+                            v{v.version}
+                          </span>
+                          {status && (
+                            <StatusBadge status={status as 'DRAFT' | 'PUBLISHED' | 'DEPRECATED'} />
+                          )}
+                          {isCurrent && (
+                            <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase">
+                              Current
+                            </span>
+                          )}
+                          <span className="text-xs text-light-text-secondary dark:text-dark-text-secondary">
+                            by {v.created_by}
+                          </span>
+                        </div>
+                        <span className="text-xs text-light-text-secondary dark:text-dark-text-secondary">
+                          {formatDate(v.created_at)}
+                        </span>
+                      </div>
                     </div>
-                    <span className="text-xs text-light-text-secondary dark:text-dark-text-secondary">
-                      {formatDate(v.created_at)}
-                    </span>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
-          </div>
+          </CollapsibleSection>
         </div>
       )}
     </ModalShell>

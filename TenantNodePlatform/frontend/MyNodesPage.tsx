@@ -13,10 +13,10 @@ import {
   MoreVertical,
   Boxes,
   ChevronDown,
-  Loader2,
   AlertCircle,
   Building2,
 } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { useTnpStore } from './tnpStore';
 import * as api from './tnpService';
 import type { Blueprint, BlueprintStatus } from './types';
@@ -24,11 +24,35 @@ import { CreateNodeModal } from './CreateNodeModal';
 import { NodeDetailModal } from './NodeDetailModal';
 import { TestNodeModal } from './TestNodeModal';
 import { VersionHistoryModal } from './VersionHistoryModal';
-import { StatusBadge, statusConfig } from './shared';
+import {
+  StatusBadge,
+  statusConfig,
+  TableSkeleton,
+  ErrorBanner,
+  ConfirmDialog,
+} from './shared';
 
 type StatusFilter = 'ALL' | BlueprintStatus;
 
 const statusFilters: StatusFilter[] = ['ALL', 'DRAFT', 'PUBLISHED', 'DEPRECATED'];
+
+// Business-friendly error messages
+function friendlyError(err: unknown, fallback: string): string {
+  if (err instanceof Error) {
+    const msg = err.message;
+    if (msg.includes('422')) {
+      return 'This node cannot be saved because some required fields are missing or invalid. Please review the configuration and try again.';
+    }
+    if (msg.includes('409') || msg.includes('conflict')) {
+      return 'This action conflicts with the current state of the node. The list may be out of date — please refresh and try again.';
+    }
+    if (msg.includes('Network Error') || msg.includes('timeout')) {
+      return 'Unable to reach the server. Please check your connection and try again.';
+    }
+    return msg;
+  }
+  return fallback;
+}
 
 export const MyNodesPage: React.FC = () => {
   const navigate = useNavigate();
@@ -51,7 +75,13 @@ export const MyNodesPage: React.FC = () => {
   const [versionBlueprint, setVersionBlueprint] = useState<Blueprint | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
-  const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
+  const [confirmDialog, setConfirmDialog] = useState<{
+    title: string;
+    message: string;
+    confirmLabel: string;
+    variant: 'danger' | 'warning' | 'info';
+    onConfirm: () => void;
+  } | null>(null);
 
   useEffect(() => {
     loadTenants();
@@ -64,11 +94,6 @@ export const MyNodesPage: React.FC = () => {
     window.addEventListener('click', handler);
     return () => window.removeEventListener('click', handler);
   }, [openMenuId]);
-
-  const showToast = (msg: string, type: 'success' | 'error' = 'success') => {
-    setToast({ msg, type });
-    setTimeout(() => setToast(null), 3500);
-  };
 
   const selectedTenant = tenants.find((t) => t.tenant_id === selectedTenantId);
 
@@ -91,20 +116,18 @@ export const MyNodesPage: React.FC = () => {
     if (bp.status === 'PUBLISHED') {
       setActionLoading(bp.blueprint_id);
       try {
-        // Editing a published blueprint creates a new draft
         const updated = await api.updateBlueprint(bp.blueprint_id, {
           name: bp.name,
           description: bp.description,
         });
-        showToast(`Created draft v${updated.version} from v${bp.version}`);
+        toast.success(`Created draft v${updated.version} from v${bp.version}`);
         await refreshBlueprints();
-      } catch {
-        showToast('Failed to create draft version', 'error');
+      } catch (err) {
+        toast.error(friendlyError(err, 'Failed to create draft version'));
       } finally {
         setActionLoading(null);
       }
     } else {
-      // For draft/deprecated, open in Node Builder
       navigate(`/node-builder?blueprint=${bp.blueprint_id}`);
     }
   };
@@ -123,39 +146,57 @@ export const MyNodesPage: React.FC = () => {
         output_contract: bp.output_contract,
         created_by: 'duplicate',
       });
-      showToast(`Duplicated as "${duplicate.name}"`);
+      toast.success(`Duplicated as "${duplicate.name}"`);
       await refreshBlueprints();
-    } catch {
-      showToast('Failed to duplicate blueprint', 'error');
+    } catch (err) {
+      toast.error(friendlyError(err, 'Failed to duplicate blueprint'));
     } finally {
       setActionLoading(null);
     }
   };
 
   const handlePublish = async (bp: Blueprint) => {
-    setActionLoading(bp.blueprint_id);
-    try {
-      await api.publishBlueprint(bp.blueprint_id);
-      showToast(`Published "${bp.name}" v${bp.version}`);
-      await refreshBlueprints();
-    } catch {
-      showToast('Failed to publish blueprint', 'error');
-    } finally {
-      setActionLoading(null);
-    }
+    setConfirmDialog({
+      title: 'Publish Blueprint',
+      message: `Publish "${bp.name}" v${bp.version}? Once published, this version becomes immutable. Future edits will create a new draft version.`,
+      confirmLabel: 'Publish',
+      variant: 'info',
+      onConfirm: async () => {
+        setConfirmDialog(null);
+        setActionLoading(bp.blueprint_id);
+        try {
+          await api.publishBlueprint(bp.blueprint_id);
+          toast.success(`Published "${bp.name}" v${bp.version}`);
+          await refreshBlueprints();
+        } catch (err) {
+          toast.error(friendlyError(err, 'Failed to publish blueprint'));
+        } finally {
+          setActionLoading(null);
+        }
+      },
+    });
   };
 
-  const handleDeprecate = async (bp: Blueprint) => {
-    setActionLoading(bp.blueprint_id);
-    try {
-      await api.updateBlueprint(bp.blueprint_id, { status: 'DEPRECATED' });
-      showToast(`Deprecated "${bp.name}"`);
-      await refreshBlueprints();
-    } catch {
-      showToast('Failed to deprecate blueprint', 'error');
-    } finally {
-      setActionLoading(null);
-    }
+  const handleDeprecate = (bp: Blueprint) => {
+    setConfirmDialog({
+      title: 'Deprecate Blueprint',
+      message: `Deprecate "${bp.name}"? Deprecated blueprints remain visible but cannot be materialized into new workflows.`,
+      confirmLabel: 'Deprecate',
+      variant: 'warning',
+      onConfirm: async () => {
+        setConfirmDialog(null);
+        setActionLoading(bp.blueprint_id);
+        try {
+          await api.updateBlueprint(bp.blueprint_id, { status: 'DEPRECATED' });
+          toast.success(`Deprecated "${bp.name}"`);
+          await refreshBlueprints();
+        } catch (err) {
+          toast.error(friendlyError(err, 'Failed to deprecate blueprint'));
+        } finally {
+          setActionLoading(null);
+        }
+      },
+    });
   };
 
   const formatDate = (iso: string) => {
@@ -172,26 +213,6 @@ export const MyNodesPage: React.FC = () => {
 
   return (
     <div className="min-h-full bg-light-bg dark:bg-dark-bg">
-      {/* Toast */}
-      {toast && (
-        <div
-          className={`fixed top-6 right-6 z-50 px-5 py-3 rounded-xl shadow-lg border transition-all duration-300 ${
-            toast.type === 'success'
-              ? 'bg-white dark:bg-dark-surface border-green-300 dark:border-green-700 text-green-700 dark:text-green-400'
-              : 'bg-white dark:bg-dark-surface border-red-300 dark:border-red-700 text-red-700 dark:text-red-400'
-          }`}
-        >
-          <div className="flex items-center gap-2">
-            {toast.type === 'success' ? (
-              <Send size={16} className="text-green-600 dark:text-green-400" />
-            ) : (
-              <AlertCircle size={16} className="text-red-600 dark:text-red-400" />
-            )}
-            <span className="text-sm font-medium">{toast.msg}</span>
-          </div>
-        </div>
-      )}
-
       <div className="max-w-7xl mx-auto px-6 py-8">
         {/* Header */}
         <div className="mb-8">
@@ -292,21 +313,16 @@ export const MyNodesPage: React.FC = () => {
 
         {/* Error */}
         {error && (
-          <div className="mb-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex items-center gap-2 text-red-700 dark:text-red-400 text-sm">
-            <AlertCircle size={18} />
-            {error}
-          </div>
+          <ErrorBanner message={error} onRetry={() => loadTenants()} />
         )}
 
-        {/* Loading */}
+        {/* Loading skeleton */}
         {loading && blueprints.length === 0 ? (
-          <div className="flex items-center justify-center py-20">
-            <Loader2 size={28} className="animate-spin text-light-text-secondary dark:text-dark-text-secondary" />
-          </div>
+          <TableSkeleton rows={4} />
         ) : filteredBlueprints.length === 0 ? (
           /* Empty state */
           <div className="flex flex-col items-center justify-center py-20 text-center">
-            <div className="w-16 h-16 bg-light-surface dark:bg-dark-surface-alt rounded-2xl flex items-center justify-center mb-4">
+            <div className="w-16 h-16 bg-light-surface dark:bg-dark-surface-alt rounded-2xl flex items-center justify-center mb-4 border border-dashed border-light-border dark:border-dark-border">
               <Boxes size={32} className="text-light-text-secondary dark:text-dark-text-secondary" />
             </div>
             <h3 className="text-lg font-semibold text-light-text-primary dark:text-dark-text-primary mb-1">
@@ -345,9 +361,6 @@ export const MyNodesPage: React.FC = () => {
                     </th>
                     <th className="text-left px-5 py-3 text-xs font-semibold text-light-text-secondary dark:text-dark-text-secondary uppercase tracking-wider">
                       Last Updated
-                    </th>
-                    <th className="text-left px-5 py-3 text-xs font-semibold text-light-text-secondary dark:text-dark-text-secondary uppercase tracking-wider">
-                      Created By
                     </th>
                     <th className="text-right px-5 py-3 text-xs font-semibold text-light-text-secondary dark:text-dark-text-secondary uppercase tracking-wider">
                       Actions
@@ -392,12 +405,6 @@ export const MyNodesPage: React.FC = () => {
                           {formatDate(bp.updated_at)}
                         </span>
                       </td>
-                      {/* Created By */}
-                      <td className="px-5 py-4">
-                        <span className="text-sm text-light-text-secondary dark:text-dark-text-secondary">
-                          {bp.created_by}
-                        </span>
-                      </td>
                       {/* Actions */}
                       <td className="px-5 py-4">
                         <div className="flex items-center justify-end gap-1">
@@ -416,7 +423,7 @@ export const MyNodesPage: React.FC = () => {
                             className="p-2 rounded-lg hover:bg-light-hover dark:hover:bg-dark-hover text-light-text-secondary dark:text-dark-text-secondary hover:text-light-text-primary dark:hover:text-dark-text-primary transition-all disabled:opacity-50"
                           >
                             {actionLoading === bp.blueprint_id ? (
-                              <Loader2 size={16} className="animate-spin" />
+                              <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
                             ) : (
                               <Pencil size={16} />
                             )}
@@ -456,7 +463,7 @@ export const MyNodesPage: React.FC = () => {
                               <MoreVertical size={16} />
                             </button>
                             {openMenuId === bp.blueprint_id && (
-                              <div className="absolute right-0 top-full mt-1 w-48 bg-white dark:bg-dark-surface border border-light-border dark:border-dark-border rounded-lg shadow-lg z-30 py-1">
+                              <div className="absolute right-0 top-full mt-1 w-48 bg-white dark:bg-dark-surface border border-light-border dark:border-dark-border rounded-lg shadow-lg z-30 py-1 animate-fade-in">
                                 {bp.status === 'DRAFT' && (
                                   <button
                                     onClick={() => {
@@ -477,7 +484,7 @@ export const MyNodesPage: React.FC = () => {
                                       handleDeprecate(bp);
                                     }}
                                     disabled={actionLoading === bp.blueprint_id}
-                                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-light-text-primary dark:text-dark-text-primary hover:bg-light-hover dark:hover:bg-dark-hover transition-all disabled:opacity-50"
+                                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-all disabled:opacity-50"
                                   >
                                     <Ban size={14} />
                                     Deprecate
@@ -513,6 +520,19 @@ export const MyNodesPage: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Confirmation Dialog */}
+      {confirmDialog && (
+        <ConfirmDialog
+          open={true}
+          title={confirmDialog.title}
+          message={confirmDialog.message}
+          confirmLabel={confirmDialog.confirmLabel}
+          variant={confirmDialog.variant}
+          onConfirm={confirmDialog.onConfirm}
+          onCancel={() => setConfirmDialog(null)}
+        />
+      )}
 
       {/* Modals */}
       {showCreate && selectedTenantId && (

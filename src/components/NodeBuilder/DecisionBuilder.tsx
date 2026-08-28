@@ -334,7 +334,7 @@ export const DecisionBuilder: React.FC<DecisionBuilderProps> = ({
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="flex items-center gap-2 text-xs font-bold text-light-text-primary dark:text-dark-text-primary uppercase tracking-wide">
+      <div className="flex items-center gap-2 text-xs font-bold text-light-text-primary dark:text-dark-text-primary uppercase tracking-wide pb-2 border-b border-light-border dark:border-dark-border">
         <GitBranch className="w-3.5 h-3.5" />
         Business Decision Builder
       </div>
@@ -355,7 +355,7 @@ export const DecisionBuilder: React.FC<DecisionBuilderProps> = ({
 
       {/* IF conditions */}
       <div className="space-y-2">
-        <div className="flex items-center gap-1.5 text-xs font-bold text-light-text-primary dark:text-dark-text-primary">
+        <div className="flex items-center gap-1.5 text-xs font-bold text-light-text-primary dark:text-dark-text-primary bg-light-surface dark:bg-dark-surface-alt px-2 py-1 rounded-md">
           <ChevronRight className="w-4 h-4" />
           IF
         </div>
@@ -380,10 +380,13 @@ export const DecisionBuilder: React.FC<DecisionBuilderProps> = ({
 
       {/* THEN / ELSE outcomes */}
       <div className="border-t border-light-border dark:border-dark-border pt-4 space-y-3">
-        <div className="text-xs font-bold text-light-text-primary dark:text-dark-text-primary">Outcomes</div>
+        <div className="flex items-center gap-1.5 text-xs font-bold text-light-text-primary dark:text-dark-text-primary bg-light-surface dark:bg-dark-surface-alt px-2 py-1 rounded-md">
+          <ChevronRight className="w-4 h-4" />
+          Outcomes
+        </div>
 
         <div className="grid grid-cols-2 gap-3">
-          <div>
+          <div className="rounded-lg bg-green-50/30 dark:bg-green-900/10 border border-green-200 dark:border-green-800 p-2">
             <label className="block text-[11px] font-bold text-green-700 dark:text-green-500 mb-1">
               THEN (if matched)
             </label>
@@ -395,7 +398,7 @@ export const DecisionBuilder: React.FC<DecisionBuilderProps> = ({
               className="w-full px-3 py-2 text-xs font-semibold border border-green-300 dark:border-green-700 bg-green-50/30 dark:bg-green-900/10 text-light-text-primary dark:text-dark-text-default rounded-lg focus:ring-2 focus:ring-green-500"
             />
           </div>
-          <div>
+          <div className="rounded-lg bg-red-50/30 dark:bg-red-900/10 border border-red-200 dark:border-red-800 p-2">
             <label className="block text-[11px] font-bold text-red-700 dark:text-red-500 mb-1">
               ELSE (if not matched)
             </label>
