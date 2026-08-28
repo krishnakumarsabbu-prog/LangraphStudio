@@ -11,6 +11,16 @@ export interface ServiceNodeData {
 export interface DecisionNodeData {
   script: string;
   label: string;
+  ruleDefinition?: {
+    ruleSetId: string;
+    schemaVersion: string;
+    conditions: {
+      operator: 'AND' | 'OR' | 'NOT';
+      rules: any[];
+    };
+    outcomes: { true: string; false: string };
+    defaultOutcome: string;
+  };
 }
 
 export interface LLMNodeData {

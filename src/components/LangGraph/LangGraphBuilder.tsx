@@ -517,7 +517,7 @@ export const LangGraphBuilder: React.FC = () => {
         if (!data.prompt) errors.push('Prompt is required');
         break;
       case 'decisionNode':
-        if (!data.script) errors.push('Decision script is required');
+        if (!data.script && !(data as any).ruleDefinition) errors.push('Decision rule configuration is required');
         break;
       case 'formNode':
         if (!data.formConfig) errors.push('Form configuration is required');
@@ -667,18 +667,39 @@ export const LangGraphBuilder: React.FC = () => {
       case 'decisionNode':
         return (
           <div className="space-y-4">
-            <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1.5">Decision Script</label>
-              <textarea
-                value={nodeData.script || ''}
-                onChange={(e) => updateNodeData(selectedNode.id, { script: e.target.value })}
-                placeholder="state['field'] == 'value'"
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded font-mono resize-none h-32 focus:outline-none focus:ring-1 focus:ring-gray-400"
-              />
-              <p className="text-xs text-gray-500 mt-1.5">
-                Python code that evaluates to True or False
-              </p>
+            <div className="flex items-center justify-between">
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1.5">Decision Rules</label>
+                <p className="text-xs text-gray-500">
+                  {nodeData.ruleDefinition
+                    ? `Business rule configured (ID: ${nodeData.ruleDefinition.ruleSetId || 'unnamed'})`
+                    : 'Click "Configure Rules" in the Advanced tab to build decision logic'}
+                </p>
+              </div>
+              <Button
+                onClick={() => setShowDecisionConfigModal(true)}
+                className="px-3 py-1.5 text-xs font-bold gap-1.5 rounded-lg"
+              >
+                <Sliders className="w-3.5 h-3.5" />
+                Configure Rules
+              </Button>
             </div>
+            {nodeData.ruleDefinition && (
+              <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
+                <div className="text-xs font-mono text-gray-600 mb-1">Outcomes:</div>
+                <div className="flex gap-2">
+                  <span className="px-2 py-0.5 text-xs font-bold bg-emerald-100 text-emerald-700 rounded">THEN: {nodeData.ruleDefinition.outcomes?.true || 'N/A'}</span>
+                  <span className="px-2 py-0.5 text-xs font-bold bg-rose-100 text-rose-700 rounded">ELSE: {nodeData.ruleDefinition.outcomes?.false || 'N/A'}</span>
+                </div>
+              </div>
+            )}
+            {nodeData.script && !nodeData.ruleDefinition && (
+              <div className="p-3 bg-amber-50 rounded-lg border border-amber-200">
+                <p className="text-xs text-amber-700">
+                  This node uses a legacy Python script. Click "Configure Rules" to migrate to the Business Rule Builder.
+                </p>
+              </div>
+            )}
           </div>
         );
 
@@ -1616,8 +1637,14 @@ export const LangGraphBuilder: React.FC = () => {
         <DecisionConfigModal
           isOpen={showDecisionConfigModal}
           onClose={() => setShowDecisionConfigModal(false)}
-          onSave={(script) => updateNodeData(selectedNode.id, { script })}
+          onSave={(data) => {
+            const updates: any = {};
+            if (data.script !== undefined) updates.script = data.script;
+            if (data.ruleDefinition !== undefined) updates.ruleDefinition = data.ruleDefinition;
+            updateNodeData(selectedNode.id, updates);
+          }}
           initialValue={(selectedNode.data as any).script || ''}
+          initialRuleDefinition={(selectedNode.data as any).ruleDefinition}
         />
       )}
 

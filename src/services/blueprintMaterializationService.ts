@@ -171,24 +171,30 @@ function adaptNodeData(
   }
 
   if (type === 'decision') {
-    // Decision nodes in the canvas use a `script` string (Python expression).
-    // The blueprint may store either a `script` string directly, or a
-    // `rules` array (TNP seed format), or a `config.ruleDefinition` object
-    // (NodeBuilder format). We preserve all of them and also derive a
-    // `script` string for the canvas.
+    // Decision nodes support two configuration formats:
+    //  1. JSON/DSL ruleDefinition (preferred, business-facing) — stored as
+    //     `ruleDefinition` and preserved verbatim for the Business Rule Builder.
+    //  2. Legacy Python `script` string (advanced/developer mode).
+    // The blueprint may store either format. We preserve both and derive a
+    // `script` string for backward compatibility with the execution engine.
     let script = (raw.script as string) ?? '';
+    let ruleDefinition: Record<string, unknown> | undefined =
+      (raw.ruleDefinition as Record<string, unknown> | undefined) ??
+      (config?.ruleDefinition as Record<string, unknown> | undefined);
 
     if (!script && Array.isArray(raw.rules)) {
-      // Compile the seed-format rules array into a Python script string.
       script = compileRulesArrayToScript(raw.rules as RuleSeedEntry[]);
     }
 
-    if (!script && config && typeof config === 'object') {
+    if (!script && ruleDefinition && typeof ruleDefinition === 'object') {
+      script = compileRuleDefinitionToScript(ruleDefinition);
+    }
+
+    if (!script && !ruleDefinition && config && typeof config === 'object') {
       const ruleDef = (config as Record<string, unknown>).ruleDefinition;
       if (ruleDef && typeof ruleDef === 'object') {
-        script = compileRuleDefinitionToScript(
-          ruleDef as Record<string, unknown>,
-        );
+        ruleDefinition = ruleDef as Record<string, unknown>;
+        script = compileRuleDefinitionToScript(ruleDefinition);
       }
     }
 
@@ -196,7 +202,11 @@ function adaptNodeData(
       label,
       script: script ?? '',
     };
-    return { ...decisionData, config: deepClone(config ?? raw), _source: metadata } as unknown as NodeData;
+    const result: any = { ...decisionData, config: deepClone(config ?? raw), _source: metadata };
+    if (ruleDefinition) {
+      result.ruleDefinition = deepClone(ruleDefinition);
+    }
+    return result as unknown as NodeData;
   }
 
   if (type === 'llm') {
