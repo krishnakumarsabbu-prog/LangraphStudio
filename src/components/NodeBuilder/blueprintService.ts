@@ -8,7 +8,7 @@
 
 import axios from 'axios';
 
-const API_BASE = import.meta.env.VITE_TENANT_API_BASE || 'http://localhost:8000';
+const API_BASE = '/api/tenant-platform';
 
 const api = axios.create({
   baseURL: API_BASE,
