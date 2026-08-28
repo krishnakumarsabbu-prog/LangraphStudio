@@ -5,6 +5,7 @@ import { ThemeProvider } from './contexts/ThemeContext';
 import Layout from './components/Layout/Layout';
 import { LangGraphBuilder } from './components/LangGraph/LangGraphBuilder';
 import { LangGraphDashboard } from './components/LangGraph/LangGraphDashboard';
+import { NodeBuilder } from './components/NodeBuilder/NodeBuilder';
 
 function App() {
   return (
@@ -15,6 +16,7 @@ function App() {
             <Route index element={<Navigate to="/langgraph" replace />} />
             <Route path="/langgraph" element={<LangGraphDashboard />} />
             <Route path="/langgraph/builder/:workflowId" element={<LangGraphBuilder />} />
+            <Route path="/node-builder" element={<NodeBuilder />} />
           </Route>
         </Routes>
 
