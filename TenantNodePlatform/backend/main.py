@@ -76,9 +76,11 @@ app.add_middleware(
 # Routers
 from .routers import tenants as tenants_router  # noqa: E402
 from .routers import blueprints as blueprints_router  # noqa: E402
+from .routers import rules as rules_router  # noqa: E402
 
 app.include_router(tenants_router.router)
 app.include_router(blueprints_router.router)
+app.include_router(rules_router.router)
 
 
 # --------------------------------------------------------------------------- #
