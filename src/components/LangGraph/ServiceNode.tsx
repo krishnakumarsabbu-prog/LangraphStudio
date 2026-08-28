@@ -34,6 +34,7 @@ export const ServiceNode: React.FC<ServiceNodeProps> = ({ id, data }) => {
       executionStatus={executionState?.status}
       borderColor="#374151"
       bgColor="#FFFFFF"
+      sourceBlueprint={(data as any)._source}
     />
   );
 };

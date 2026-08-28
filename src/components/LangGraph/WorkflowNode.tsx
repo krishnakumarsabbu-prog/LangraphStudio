@@ -35,6 +35,7 @@ export const WorkflowNode: React.FC<WorkflowNodeProps> = ({ id, data }) => {
       executionStatus={executionState?.status}
       borderColor="#6B7280"
       bgColor="#F9FAFB"
+      sourceBlueprint={(data as any)._source}
     />
   );
 };

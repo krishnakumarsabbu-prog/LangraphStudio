@@ -32,6 +32,7 @@ export const DecisionNode: React.FC<DecisionNodeProps> = ({ id, data }) => {
       executionStatus={executionState?.status}
       borderColor="#6B7280"
       bgColor="#F3F4F6"
+      sourceBlueprint={(data as any)._source}
     />
   );
 };

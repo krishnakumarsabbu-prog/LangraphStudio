@@ -38,6 +38,7 @@ import type {
 export interface MaterializeInput {
   tenant_id: string;
   blueprint_id: string;
+  blueprint_name?: string;
   blueprint_version: number;
   /** Full blueprint graph_definition as returned by the TNP API. */
   graph_definition: {
@@ -80,6 +81,7 @@ export interface BlueprintGraphEdge {
 
 export interface SourceBlueprintMetadata {
   source_blueprint_id: string;
+  source_blueprint_name?: string;
   source_blueprint_version: number;
   materialized_at: string;
 }
@@ -87,6 +89,7 @@ export interface SourceBlueprintMetadata {
 function makeMetadata(input: MaterializeInput): SourceBlueprintMetadata {
   return {
     source_blueprint_id: input.blueprint_id,
+    source_blueprint_name: input.blueprint_name,
     source_blueprint_version: input.blueprint_version,
     materialized_at: new Date().toISOString(),
   };

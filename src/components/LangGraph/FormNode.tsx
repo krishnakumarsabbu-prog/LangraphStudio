@@ -32,6 +32,7 @@ export const FormNode: React.FC<FormNodeProps> = ({ id, data }) => {
       executionStatus={executionState?.status}
       borderColor="#4B5563"
       bgColor="#FFFFFF"
+      sourceBlueprint={(data as any)._source}
     />
   );
 };

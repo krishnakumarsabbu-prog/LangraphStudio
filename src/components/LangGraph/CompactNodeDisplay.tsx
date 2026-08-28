@@ -1,7 +1,14 @@
 import React from 'react';
 import { Handle, Position } from 'react-flow-renderer';
-import { Settings, Trash2, Play, Loader2, CheckCircle, XCircle } from 'lucide-react';
+import { Settings, Trash2, Play, Loader2, CheckCircle, XCircle, Package } from 'lucide-react';
 import { NodeExecutionStatus } from '../../stores/langGraphStore';
+
+export interface SourceBlueprintBadge {
+  source_blueprint_id: string;
+  source_blueprint_name?: string;
+  source_blueprint_version: number;
+  materialized_at: string;
+}
 
 interface CompactNodeDisplayProps {
   id: string;
@@ -14,6 +21,7 @@ interface CompactNodeDisplayProps {
   executionStatus?: NodeExecutionStatus;
   borderColor?: string;
   bgColor?: string;
+  sourceBlueprint?: SourceBlueprintBadge;
 }
 
 export const CompactNodeDisplay: React.FC<CompactNodeDisplayProps> = ({
@@ -27,6 +35,7 @@ export const CompactNodeDisplay: React.FC<CompactNodeDisplayProps> = ({
   executionStatus = 'idle',
   borderColor = '#6B7280',
   bgColor = '#FFFFFF',
+  sourceBlueprint,
 }) => {
   const getPatternStyle = () => {
     switch (pattern) {
@@ -80,6 +89,14 @@ export const CompactNodeDisplay: React.FC<CompactNodeDisplayProps> = ({
       }}
     >
       {getStatusBadge()}
+      {sourceBlueprint && (
+        <div
+          className="absolute -top-1.5 -left-1.5 flex items-center gap-0.5 px-1 py-0.5 rounded-full bg-blue-50 border border-blue-200 shadow-sm"
+          title={`Blueprint: ${sourceBlueprint.source_blueprint_name ?? sourceBlueprint.source_blueprint_id} v${sourceBlueprint.source_blueprint_version}`}
+        >
+          <Package className="w-2.5 h-2.5 text-blue-600" />
+        </div>
+      )}
       <Handle
         type="target"
         position={Position.Left}
@@ -102,6 +119,11 @@ export const CompactNodeDisplay: React.FC<CompactNodeDisplayProps> = ({
           <p className="text-xs font-medium text-center truncate max-w-full text-gray-800 leading-tight">
             {label}
           </p>
+          {sourceBlueprint && (
+            <p className="text-[10px] text-blue-600 font-medium truncate max-w-full leading-tight">
+              {sourceBlueprint.source_blueprint_name ?? sourceBlueprint.source_blueprint_id} v{sourceBlueprint.source_blueprint_version}
+            </p>
+          )}
         </div>
 
         <div className="flex gap-0.5 justify-center mt-2 pt-2 border-t border-gray-200">

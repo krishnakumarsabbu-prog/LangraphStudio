@@ -33,6 +33,7 @@ export const LLMNode: React.FC<LLMNodeProps> = ({ id, data }) => {
       executionStatus={executionState?.status}
       borderColor="#4B5563"
       bgColor="#F9FAFB"
+      sourceBlueprint={(data as any)._source}
     />
   );
 };

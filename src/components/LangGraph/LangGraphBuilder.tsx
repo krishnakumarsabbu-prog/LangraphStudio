@@ -281,6 +281,7 @@ export const LangGraphBuilder: React.FC = () => {
           const fragment = materializeBlueprint({
             tenant_id: blueprint.tenant_id,
             blueprint_id: blueprint.blueprint_id,
+            blueprint_name: blueprint.name,
             blueprint_version: blueprint.version,
             graph_definition: blueprint.graph_definition as any,
             drop_position: position,
@@ -1322,13 +1323,40 @@ export const LangGraphBuilder: React.FC = () => {
                 </div>
               )}
 
-              {!isViewMode && tnpStore.blueprints.length > 0 && (
+              {!isViewMode && (
                 <div className="mt-6 border-t border-gray-200 pt-4">
                   <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3 flex items-center gap-1.5">
                     <Package className="w-3.5 h-3.5" />
                     My Nodes
                   </h3>
+
+                  {tnpStore.tenants.length > 1 && (
+                    <div className="mb-2">
+                      <select
+                        value={tnpStore.selectedTenantId ?? ''}
+                        onChange={(e) => tnpStore.selectTenant(e.target.value)}
+                        className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded bg-white focus:outline-none focus:ring-1 focus:ring-gray-400"
+                      >
+                        {tnpStore.tenants.map((t) => (
+                          <option key={t.tenant_id} value={t.tenant_id}>
+                            {t.tenant_name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
                   <div className="space-y-1.5">
+                    {tnpStore.loading && (
+                      <div className="text-xs text-gray-400 text-center py-2">Loading...</div>
+                    )}
+                    {!tnpStore.loading && tnpStore.blueprints.length === 0 && (
+                      <div className="text-xs text-gray-400 text-center py-2">
+                        {tnpStore.tenants.length === 0
+                          ? 'No tenants available'
+                          : 'No blueprints for this tenant'}
+                      </div>
+                    )}
                     {tnpStore.blueprints.map((bp) => (
                       <div
                         key={bp.blueprint_id}
@@ -1337,7 +1365,7 @@ export const LangGraphBuilder: React.FC = () => {
                         className="flex items-center gap-2 px-3 py-2 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded cursor-grab active:cursor-grabbing transition-colors"
                         title={bp.description || bp.name}
                       >
-                        <Package className="w-4 h-4 text-blue-600" />
+                        <Package className="w-4 h-4 text-blue-600 flex-shrink-0" />
                         <span className="text-sm text-gray-700 truncate">{bp.name}</span>
                       </div>
                     ))}
@@ -1486,6 +1514,20 @@ export const LangGraphBuilder: React.FC = () => {
                     <X className="w-4 h-4" />
                   </button>
                 </div>
+
+                {(selectedNode.data as any)._source && (
+                  <div className="mt-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded flex items-center gap-2">
+                    <Package className="w-3.5 h-3.5 text-blue-600 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium text-blue-700 truncate">
+                        Blueprint: {(selectedNode.data as any)._source.source_blueprint_name ?? (selectedNode.data as any)._source.source_blueprint_id} v{(selectedNode.data as any)._source.source_blueprint_version}
+                      </p>
+                      <p className="text-[10px] text-blue-500">
+                        Workflow-owned copy - edits do not affect the blueprint
+                      </p>
+                    </div>
+                  </div>
+                )}
 
                 <div className="flex border-b border-gray-300 -mx-4 -mb-3 px-4">
                   <button
