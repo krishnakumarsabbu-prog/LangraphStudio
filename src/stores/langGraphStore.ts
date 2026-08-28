@@ -104,6 +104,7 @@ interface LangGraphState {
   clearCanvas: () => void;
   exportJSON: () => string;
   importJSON: (jsonString: string) => void;
+  addMaterializedFragment: (nodes: Node<NodeData>[], edges: LangGraphEdge[]) => void;
 }
 
 let nodeIdCounter = 1;
@@ -329,6 +330,16 @@ export const useLangGraphStore = create<LangGraphState>((set, get) => ({
   clearCanvas: () => {
     set({ nodes: [], edges: [] });
     nodeIdCounter = 1;
+  },
+
+  addMaterializedFragment: (fragmentNodes, fragmentEdges) => {
+    set({
+      nodes: [...get().nodes, ...fragmentNodes],
+      edges: [...get().edges, ...fragmentEdges],
+    });
+    if (fragmentNodes.length > 0) {
+      set({ selectedNodeId: fragmentNodes[0].id });
+    }
   },
 
   exportJSON: () => {

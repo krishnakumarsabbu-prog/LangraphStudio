@@ -25,6 +25,10 @@ import { WorkflowConfigModal } from './WorkflowConfigModal';
 import { ProgrammaticGeneratorModal } from './ProgrammaticGeneratorModal';
 import { WhatIfScenarioStudio } from './WhatIfScenarioStudio';
 import { ObjectMapperModal } from './ObjectMapperModal';
+import { useTnpStore } from '../../../TenantNodePlatform/frontend/tnpStore';
+import { materializeBlueprint } from '../../services/blueprintMaterializationService';
+import type { Blueprint } from '../../../TenantNodePlatform/frontend/types';
+import { Package } from 'lucide-react';
 
 const nodeTypes = {
   serviceNode: ServiceNode,
@@ -80,6 +84,8 @@ export const LangGraphBuilder: React.FC = () => {
   const [showWhatIfStudio, setShowWhatIfStudio] = useState(false);
   const [showMapperConfigModal, setShowMapperConfigModal] = useState(false);
 
+  const tnpStore = useTnpStore();
+
   const {
     nodes,
     edges,
@@ -106,6 +112,7 @@ export const LangGraphBuilder: React.FC = () => {
     inputs,
     nodeExecutionStates,
     setNodeExecutionState,
+    addMaterializedFragment,
   } = useLangGraphStore();
 
   const selectedNode = nodes.find(n => n.id === selectedNodeId);
@@ -138,6 +145,12 @@ export const LangGraphBuilder: React.FC = () => {
       loadAvailableWorkflows();
     }
   }, [selectedNode?.type]);
+
+  useEffect(() => {
+    if (!isViewMode && tnpStore.tenants.length === 0) {
+      tnpStore.loadTenants();
+    }
+  }, [isViewMode]);
 
   useEffect(() => {
     if (isEditingLabel && labelInputRef.current) {
@@ -236,6 +249,11 @@ export const LangGraphBuilder: React.FC = () => {
     event.dataTransfer.effectAllowed = 'move';
   };
 
+  const onBlueprintDragStart = (event: React.DragEvent, blueprint: Blueprint) => {
+    event.dataTransfer.setData('application/reactflow-blueprint', JSON.stringify(blueprint));
+    event.dataTransfer.effectAllowed = 'move';
+  };
+
   const onDragOver = useCallback((event: React.DragEvent) => {
     event.preventDefault();
     event.dataTransfer.dropEffect = 'move';
@@ -245,8 +263,7 @@ export const LangGraphBuilder: React.FC = () => {
     (event: React.DragEvent) => {
       event.preventDefault();
 
-      const nodeType = event.dataTransfer.getData('application/reactflow');
-      if (!nodeType || !reactFlowInstance || !reactFlowWrapper.current) {
+      if (!reactFlowInstance || !reactFlowWrapper.current) {
         return;
       }
 
@@ -255,6 +272,37 @@ export const LangGraphBuilder: React.FC = () => {
         x: event.clientX - reactFlowBounds.left,
         y: event.clientY - reactFlowBounds.top,
       });
+
+      // --- Blueprint materialization path ---
+      const blueprintJson = event.dataTransfer.getData('application/reactflow-blueprint');
+      if (blueprintJson) {
+        try {
+          const blueprint: Blueprint = JSON.parse(blueprintJson);
+          const fragment = materializeBlueprint({
+            tenant_id: blueprint.tenant_id,
+            blueprint_id: blueprint.blueprint_id,
+            blueprint_version: blueprint.version,
+            graph_definition: blueprint.graph_definition as any,
+            drop_position: position,
+          });
+          if (fragment.nodes.length === 0) {
+            toast.error('Blueprint has no nodes to materialize');
+            return;
+          }
+          addMaterializedFragment(fragment.nodes, fragment.edges);
+          setSelectedNodeId(fragment.rootWorkflowNodeId);
+          toast.success(`Materialized "${blueprint.name}" (${fragment.nodes.length} nodes)`);
+        } catch (err) {
+          console.error('Materialization failed:', err);
+          toast.error('Failed to materialize blueprint');
+        }
+        setActiveTab('config');
+        return;
+      }
+
+      // --- Standard framework node path ---
+      const nodeType = event.dataTransfer.getData('application/reactflow');
+      if (!nodeType) return;
 
       switch (nodeType) {
         case 'serviceNode':
@@ -292,7 +340,7 @@ export const LangGraphBuilder: React.FC = () => {
       }
       setActiveTab('config');
     },
-    [reactFlowInstance, addServiceNode, addDecisionNode, addLLMNode, addFormNode, addWorkflowNode, addParallelNode, addMergeNode, addMapperNode]
+    [reactFlowInstance, addServiceNode, addDecisionNode, addLLMNode, addFormNode, addWorkflowNode, addParallelNode, addMergeNode, addMapperNode, addMaterializedFragment, setSelectedNodeId]
   );
 
   const handleClearCanvas = () => {
@@ -1270,6 +1318,29 @@ export const LangGraphBuilder: React.FC = () => {
                       <FileOutput className="w-4 h-4 text-gray-600" />
                       <span className="text-sm text-gray-700">Object Mapper</span>
                     </div>
+                  </div>
+                </div>
+              )}
+
+              {!isViewMode && tnpStore.blueprints.length > 0 && (
+                <div className="mt-6 border-t border-gray-200 pt-4">
+                  <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3 flex items-center gap-1.5">
+                    <Package className="w-3.5 h-3.5" />
+                    My Nodes
+                  </h3>
+                  <div className="space-y-1.5">
+                    {tnpStore.blueprints.map((bp) => (
+                      <div
+                        key={bp.blueprint_id}
+                        draggable
+                        onDragStart={(e) => onBlueprintDragStart(e, bp)}
+                        className="flex items-center gap-2 px-3 py-2 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded cursor-grab active:cursor-grabbing transition-colors"
+                        title={bp.description || bp.name}
+                      >
+                        <Package className="w-4 h-4 text-blue-600" />
+                        <span className="text-sm text-gray-700 truncate">{bp.name}</span>
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}
