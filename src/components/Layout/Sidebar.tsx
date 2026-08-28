@@ -10,7 +10,8 @@ import {
   User,
   BarChart3,
   GitCompare,
-  Boxes
+  Boxes,
+  Layers
 } from 'lucide-react';
 import { useTheme } from '../../contexts/ThemeContext';
 
@@ -25,6 +26,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, onToggle }) => {
   const navItems = [
     { path: '/langgraph', label: 'LangGraph Builder', icon: GitBranch },
     { path: '/node-builder', label: 'Node Builder', icon: Boxes },
+    { path: '/my-nodes', label: 'My Nodes', icon: Layers },
     { path: '/metrics', label: 'Metrics Dashboard', icon: BarChart3 },
     { path: '/champion-challenger', label: 'Champion vs Challenger', icon: GitCompare },
   ];

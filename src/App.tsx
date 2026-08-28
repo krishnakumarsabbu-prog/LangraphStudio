@@ -6,6 +6,7 @@ import Layout from './components/Layout/Layout';
 import { LangGraphBuilder } from './components/LangGraph/LangGraphBuilder';
 import { LangGraphDashboard } from './components/LangGraph/LangGraphDashboard';
 import { NodeBuilder } from './components/NodeBuilder/NodeBuilder';
+import { MyNodesPage } from '../TenantNodePlatform/frontend/MyNodesPage';
 
 function App() {
   return (
@@ -17,6 +18,7 @@ function App() {
             <Route path="/langgraph" element={<LangGraphDashboard />} />
             <Route path="/langgraph/builder/:workflowId" element={<LangGraphBuilder />} />
             <Route path="/node-builder" element={<NodeBuilder />} />
+            <Route path="/my-nodes" element={<MyNodesPage />} />
           </Route>
         </Routes>
 
