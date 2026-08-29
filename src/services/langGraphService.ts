@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const BACKEND_API_URL = 'http://localhost:8000';
+const BACKEND_API_URL = 'http://localhost:8001';
 
 export interface LangGraphWorkflow {
   name: string;
@@ -11,16 +11,16 @@ export interface LangGraphWorkflow {
 }
 
 export const langGraphService = {
-  async getAllWorkflows(): Promise<LangGraphWorkflow[]> {
+  async getAllWorkflows(tenantId?: string): Promise<LangGraphWorkflow[]> {
     try {
-      console.log('Fetching all workflows from Python backend');
-      const response = await axios.get(`${BACKEND_API_URL}/api/flows`);
+      const params = tenantId && tenantId !== 'all' ? { tenant_id: tenantId } : {};
+      const response = await axios.get(`${BACKEND_API_URL}/api/flows`, { params });
       return response.data.map((flow: any) => ({
         name: flow.name,
         context: flow.context?.description || '',
-        latest_version: flow.latest_version,
+        latest_version: flow.latest_version || flow.version || 1,
         created_at: flow.created_at,
-        data: flow.data
+        data: flow.data,
       }));
     } catch (error) {
       console.error('Error fetching workflows from backend:', error);
@@ -30,14 +30,13 @@ export const langGraphService = {
 
   async getWorkflowByName(name: string): Promise<LangGraphWorkflow | null> {
     try {
-      console.log('Fetching workflow from Python backend:', name);
-      const response = await axios.get(`${BACKEND_API_URL}/api/flows/${name}`);
+      const response = await axios.get(`${BACKEND_API_URL}/api/flows/${encodeURIComponent(name)}`);
       return {
         name: response.data.name,
         context: response.data.context?.description || '',
-        latest_version: response.data.version,
+        latest_version: response.data.version || response.data.latest_version || 1,
         created_at: response.data.created_at,
-        data: response.data.data
+        data: response.data.data,
       };
     } catch (error: any) {
       if (error.response?.status === 404) {
@@ -48,20 +47,20 @@ export const langGraphService = {
     }
   },
 
-  async createWorkflow(name: string, context: string, workflowData: any): Promise<LangGraphWorkflow> {
+  async createWorkflow(name: string, context: string, workflowData: any, tenantId?: string): Promise<LangGraphWorkflow> {
     try {
-      console.log('Creating workflow in Python backend:', name);
       const response = await axios.post(`${BACKEND_API_URL}/api/flows`, {
         name,
         data: workflowData,
-        context: { description: context }
+        context: { description: context },
+        tenant_id: tenantId || 'tenant-gsa',
       });
       return {
         name: response.data.name,
         context,
-        latest_version: response.data.version,
-        created_at: new Date().toISOString(),
-        data: workflowData
+        latest_version: response.data.version || response.data.latest_version || 1,
+        created_at: response.data.created_at || new Date().toISOString(),
+        data: workflowData,
       };
     } catch (error) {
       console.error('Error creating workflow in backend:', error);
@@ -69,20 +68,20 @@ export const langGraphService = {
     }
   },
 
-  async updateWorkflow(name: string, context: string, workflowData: any): Promise<LangGraphWorkflow> {
+  async updateWorkflow(name: string, context: string, workflowData: any, tenantId?: string): Promise<LangGraphWorkflow> {
     try {
-      console.log('Updating workflow in Python backend:', name);
       const response = await axios.post(`${BACKEND_API_URL}/api/flows`, {
         name,
         data: workflowData,
-        context: { description: context }
+        context: { description: context },
+        tenant_id: tenantId || 'tenant-gsa',
       });
       return {
         name: response.data.name,
         context,
-        latest_version: response.data.version,
-        created_at: new Date().toISOString(),
-        data: workflowData
+        latest_version: response.data.version || response.data.latest_version || 1,
+        created_at: response.data.created_at || new Date().toISOString(),
+        data: workflowData,
       };
     } catch (error) {
       console.error('Error updating workflow in backend:', error);
@@ -91,7 +90,11 @@ export const langGraphService = {
   },
 
   async deleteWorkflow(name: string): Promise<void> {
-    console.log('Delete not implemented in Python backend API');
-    throw new Error('Delete operation not supported');
+    try {
+      await axios.delete(`${BACKEND_API_URL}/api/flows/${encodeURIComponent(name)}`);
+    } catch (error) {
+      console.error('Error deleting workflow in backend:', error);
+      throw error;
+    }
   },
 };

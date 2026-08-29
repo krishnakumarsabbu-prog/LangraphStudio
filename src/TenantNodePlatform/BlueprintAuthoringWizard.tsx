@@ -18,6 +18,7 @@ import {
 import { VisualRuleBuilder, VisualRuleMatrix, compileRuleMatrixToPython } from './VisualRuleBuilder';
 import { useAuthStore } from './authStore';
 import { useTnpStore } from './tnpStore';
+import * as api from './tnpService';
 import type { Blueprint, BlueprintCreate } from './types';
 import toast from 'react-hot-toast';
 
@@ -187,17 +188,12 @@ export const BlueprintAuthoringWizard: React.FC<BlueprintAuthoringWizardProps> =
     const serviceNodeId = `node_service_${Date.now()}`;
     const decisionNodeId = `node_decision_${Date.now()}`;
 
-    const newBlueprint: Blueprint = {
-      blueprint_id: `bp-${Date.now()}`,
-      tenant_id: currentTenantId || 'tenant-gsa',
+    const targetTenantId = currentTenantId || 'tenant-gsa';
+    const blueprintPayload: BlueprintCreate = {
       name: name.trim(),
       description: description.trim(),
-      status: 'PUBLISHED',
-      version: 1,
       source_type: 'graph',
       created_by: currentUser?.email || 'admin@tenant.gov',
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
       input_contract: {
         type: 'object',
         properties: {
@@ -259,22 +255,16 @@ export const BlueprintAuthoringWizard: React.FC<BlueprintAuthoringWizardProps> =
       },
     };
 
-    // Store in localStorage & TNP Store
+    // Store in Backend API & TNP Store
     try {
-      const existingStr = localStorage.getItem(`tnp_blueprints_${newBlueprint.tenant_id}`) || '[]';
-      const existing: Blueprint[] = JSON.parse(existingStr);
-      localStorage.setItem(
-        `tnp_blueprints_${newBlueprint.tenant_id}`,
-        JSON.stringify([newBlueprint, ...existing])
-      );
+      const created = await api.createBlueprint(targetTenantId, blueprintPayload);
+      const published = await api.publishBlueprint(created.blueprint_id);
       await refreshBlueprints();
-      toast.success(`🎉 Blueprint "${newBlueprint.name}" published as v1.0.0!`);
-      if (onSuccess) onSuccess(newBlueprint);
+      toast.success(`🎉 Blueprint "${published.name}" published as v${published.version}!`);
+      if (onSuccess) onSuccess(published);
       onClose();
-    } catch {
-      toast.success(`🎉 Blueprint "${newBlueprint.name}" created!`);
-      if (onSuccess) onSuccess(newBlueprint);
-      onClose();
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'Failed to publish blueprint to backend');
     }
   };
 

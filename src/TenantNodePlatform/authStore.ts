@@ -1,116 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-
-export type UserRole = 'SUPER_ADMIN' | 'TENANT_ADMIN' | 'TENANT_USER' | 'TENANT_VIEWER';
-
-export interface UserProfile {
-  id: string;
-  name: string;
-  email: string;
-  role: UserRole;
-  tenant_id: string;
-  tenant_name: string;
-  avatar?: string;
-  title?: string;
-}
-
-export interface TenantInfo {
-  tenant_id: string;
-  tenant_name: string;
-  slug: string;
-  description: string;
-  category: string;
-  status: 'active' | 'suspended';
-  icon?: string;
-}
-
-export const PRESET_TENANTS: TenantInfo[] = [
-  {
-    tenant_id: 'tenant-gsa',
-    tenant_name: 'GSA (General Services Admin)',
-    slug: 'gsa',
-    description: 'Government identity, verification & procurement workflows',
-    category: 'Federal Agency',
-    status: 'active',
-    icon: 'Building2',
-  },
-  {
-    tenant_id: 'tenant-usps',
-    tenant_name: 'USPS (Postal Service)',
-    slug: 'usps',
-    description: 'Delivery Point Validation (DPV) & address verification services',
-    category: 'Logistics & Postal',
-    status: 'active',
-    icon: 'Truck',
-  },
-  {
-    tenant_id: 'tenant-fintech',
-    tenant_name: 'Fintech Global Corp',
-    slug: 'fintech',
-    description: 'KYC, AML & real-time fraud assessment workflows',
-    category: 'Financial Services',
-    status: 'active',
-    icon: 'ShieldCheck',
-  },
-];
-
-export const PRESET_USERS: Record<string, UserProfile & { passwordHint: string }> = {
-  superadmin: {
-    id: 'usr-superadmin',
-    name: 'Eleanor Vance',
-    email: 'superadmin@flowforge.internal',
-    role: 'SUPER_ADMIN',
-    tenant_id: 'all',
-    tenant_name: 'All Tenants (Super Admin)',
-    title: 'Principal Platform Operator',
-    passwordHint: 'admin123',
-    avatar: '👑',
-  },
-  gsa_admin: {
-    id: 'usr-gsa-admin',
-    name: 'Marcus Holloway',
-    email: 'admin@gsa.gov',
-    role: 'TENANT_ADMIN',
-    tenant_id: 'tenant-gsa',
-    tenant_name: 'GSA (General Services Admin)',
-    title: 'GSA Lead Systems Architect',
-    passwordHint: 'gsa123',
-    avatar: '🛡️',
-  },
-  gsa_analyst: {
-    id: 'usr-gsa-analyst',
-    name: 'Sarah Chen',
-    email: 'analyst@gsa.gov',
-    role: 'TENANT_USER',
-    tenant_id: 'tenant-gsa',
-    tenant_name: 'GSA (General Services Admin)',
-    title: 'GSA Business Workflow Analyst',
-    passwordHint: 'gsa123',
-    avatar: '📊',
-  },
-  usps_admin: {
-    id: 'usr-usps-admin',
-    name: 'David Reynolds',
-    email: 'admin@usps.gov',
-    role: 'TENANT_ADMIN',
-    tenant_id: 'tenant-usps',
-    tenant_name: 'USPS (Postal Service)',
-    title: 'USPS Solutions Engineer',
-    passwordHint: 'usps123',
-    avatar: '📦',
-  },
-  fintech_admin: {
-    id: 'usr-fintech-admin',
-    name: 'Elena Rostova',
-    email: 'admin@fintech.io',
-    role: 'TENANT_ADMIN',
-    tenant_id: 'tenant-fintech',
-    tenant_name: 'Fintech Global Corp',
-    title: 'Fintech Head of Compliance',
-    passwordHint: 'fintech123',
-    avatar: '💳',
-  },
-};
+import type { UserProfile, UserRole, Tenant, PersonaItem, ImpersonationContext } from './types';
+import * as api from './tnpService';
 
 interface AuthState {
   currentUser: UserProfile | null;
@@ -118,13 +9,20 @@ interface AuthState {
   currentTenantName: string;
   isAuthenticated: boolean;
   token: string | null;
-  availableTenants: TenantInfo[];
+  availableTenants: Tenant[];
+  personas: PersonaItem[];
+  loading: boolean;
+  impersonationContext: ImpersonationContext | null;
 
   // Actions
   login: (email: string, password?: string, tenantId?: string) => Promise<{ success: boolean; error?: string }>;
-  quickLogin: (personaKey: keyof typeof PRESET_USERS) => void;
+  quickLogin: (persona: PersonaItem) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
   switchActiveTenant: (tenantId: string) => void;
+  loadPersonas: () => Promise<PersonaItem[]>;
+  loadAvailableTenants: () => Promise<Tenant[]>;
+  startImpersonation: (tenantId: string, tenantName: string) => Promise<void>;
+  exitImpersonation: () => Promise<void>;
 
   // Permission Selectors
   canCreateBlueprint: () => boolean;
@@ -139,68 +37,71 @@ interface AuthState {
 export const useAuthStore = create<AuthState>()(
   persist(
     (set, get) => ({
-      currentUser: PRESET_USERS.gsa_admin, // default logged-in as GSA Admin
-      currentTenantId: 'tenant-gsa',
-      currentTenantName: 'GSA (General Services Admin)',
-      isAuthenticated: true,
-      token: 'mock-jwt-token-gsa-admin',
-      availableTenants: PRESET_TENANTS,
+      currentUser: null,
+      currentTenantId: '',
+      currentTenantName: '',
+      isAuthenticated: false,
+      token: null,
+      availableTenants: [],
+      personas: [],
+      loading: false,
+      impersonationContext: null,
 
-      login: async (email: string, _password?: string, tenantId?: string) => {
-        const found = Object.values(PRESET_USERS).find(
-          (u) => u.email.toLowerCase() === email.trim().toLowerCase()
-        );
-
-        if (!found) {
-          return { success: false, error: 'User not found. Use one of the demo accounts or quick-login buttons.' };
+      loadPersonas: async () => {
+        try {
+          const items = await api.listPersonas();
+          set({ personas: items });
+          return items;
+        } catch (err) {
+          console.error('Failed to load personas from backend:', err);
+          return [];
         }
-
-        const effectiveTenantId =
-          found.role === 'SUPER_ADMIN'
-            ? tenantId || 'all'
-            : found.tenant_id;
-
-        const effectiveTenant = PRESET_TENANTS.find((t) => t.tenant_id === effectiveTenantId);
-
-        const updatedUser: UserProfile = {
-          ...found,
-          tenant_id: effectiveTenantId,
-          tenant_name:
-            effectiveTenantId === 'all'
-              ? 'All Tenants (Super Admin)'
-              : effectiveTenant?.tenant_name || found.tenant_name,
-        };
-
-        set({
-          currentUser: updatedUser,
-          currentTenantId: effectiveTenantId,
-          currentTenantName: updatedUser.tenant_name,
-          isAuthenticated: true,
-          token: `mock-token-${found.id}-${Date.now()}`,
-        });
-
-        return { success: true };
       },
 
-      quickLogin: (personaKey) => {
-        const user = PRESET_USERS[personaKey];
-        if (!user) return;
-        const tenant = PRESET_TENANTS.find((t) => t.tenant_id === user.tenant_id);
-        const tenantName = user.role === 'SUPER_ADMIN' ? 'All Tenants (Super Admin)' : (tenant?.tenant_name || user.tenant_name);
-
-        set({
-          currentUser: {
-            ...user,
-            tenant_name: tenantName,
-          },
-          currentTenantId: user.tenant_id,
-          currentTenantName: tenantName,
-          isAuthenticated: true,
-          token: `mock-token-${user.id}-${Date.now()}`,
-        });
+      loadAvailableTenants: async () => {
+        try {
+          const tenants = await api.listTenants();
+          set({ availableTenants: tenants });
+          return tenants;
+        } catch (err) {
+          console.error('Failed to load tenants from backend:', err);
+          return [];
+        }
       },
 
-      logout: () => {
+      login: async (email: string, password = '', tenantId?: string) => {
+        set({ loading: true });
+        try {
+          const res = await api.loginApi({ email, password, tenant_id: tenantId });
+          if (res.success && res.user) {
+            set({
+              currentUser: res.user,
+              currentTenantId: res.user.tenant_id,
+              currentTenantName: res.user.tenant_name,
+              isAuthenticated: true,
+              token: res.token,
+              availableTenants: res.available_tenants || [],
+              loading: false,
+            });
+            // Immediate sync to TNP store for strict tenant data isolation
+            const { useTnpStore } = await import('./tnpStore');
+            await useTnpStore.getState().selectTenant(res.user.tenant_id);
+            return { success: true };
+          }
+          set({ loading: false });
+          return { success: false, error: 'Authentication failed' };
+        } catch (err: any) {
+          set({ loading: false });
+          const message = err.response?.data?.detail || err.message || 'Authentication failed. Please check credentials.';
+          return { success: false, error: message };
+        }
+      },
+
+      quickLogin: async (persona: PersonaItem) => {
+        return get().login(persona.email, '', persona.tenant_id);
+      },
+
+      logout: async () => {
         set({
           currentUser: null,
           currentTenantId: '',
@@ -208,13 +109,15 @@ export const useAuthStore = create<AuthState>()(
           isAuthenticated: false,
           token: null,
         });
+        const { useTnpStore } = await import('./tnpStore');
+        useTnpStore.setState({ selectedTenantId: null, blueprints: [], users: [] });
       },
 
-      switchActiveTenant: (tenantId: string) => {
-        const { currentUser } = get();
+      switchActiveTenant: async (tenantId: string) => {
+        const { currentUser, availableTenants } = get();
         if (!currentUser) return;
 
-        // Super admins can switch freely; tenant admins/users stay in their own tenant
+        // Super admins can switch freely across all tenants
         if (currentUser.role === 'SUPER_ADMIN') {
           if (tenantId === 'all') {
             set({
@@ -227,7 +130,7 @@ export const useAuthStore = create<AuthState>()(
               },
             });
           } else {
-            const tenant = PRESET_TENANTS.find((t) => t.tenant_id === tenantId);
+            const tenant = availableTenants.find((t) => t.tenant_id === tenantId);
             if (tenant) {
               set({
                 currentTenantId: tenant.tenant_id,
@@ -240,7 +143,46 @@ export const useAuthStore = create<AuthState>()(
               });
             }
           }
+          const { useTnpStore } = await import('./tnpStore');
+          await useTnpStore.getState().selectTenant(tenantId);
         }
+      },
+
+      startImpersonation: async (tenantId: string, tenantName: string) => {
+        const { currentUser, token } = get();
+        if (!currentUser || currentUser.role !== 'SUPER_ADMIN') return;
+        try {
+          const ctx = await api.startImpersonation(tenantId);
+          set({
+            impersonationContext: ctx,
+            currentTenantId: tenantId,
+            currentTenantName: tenantName,
+          });
+          const { useTnpStore } = await import('./tnpStore');
+          await useTnpStore.getState().selectTenant(tenantId);
+        } catch (err) {
+          console.error('Failed to start impersonation:', err);
+        }
+      },
+
+      exitImpersonation: async () => {
+        const { currentUser, impersonationContext } = get();
+        if (!impersonationContext) return;
+        try {
+          await api.endImpersonation(
+            impersonationContext.target_tenant_id,
+            impersonationContext.session_id
+          );
+        } catch (err) {
+          console.error('Failed to end impersonation:', err);
+        }
+        set({
+          impersonationContext: null,
+          currentTenantId: impersonationContext.original_tenant_id,
+          currentTenantName: 'All Tenants (Super Admin)',
+        });
+        const { useTnpStore } = await import('./tnpStore');
+        await useTnpStore.getState().selectTenant(impersonationContext.original_tenant_id || 'all');
       },
 
       canCreateBlueprint: () => {
@@ -285,6 +227,15 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: 'tnp_auth_session',
+      partialize: (state) => ({
+        currentUser: state.currentUser,
+        currentTenantId: state.currentTenantId,
+        currentTenantName: state.currentTenantName,
+        isAuthenticated: state.isAuthenticated,
+        token: state.token,
+      }),
     }
   )
 );
+
+export type { UserProfile, UserRole, Tenant, PersonaItem };

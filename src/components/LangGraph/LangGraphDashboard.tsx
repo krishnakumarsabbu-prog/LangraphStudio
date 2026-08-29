@@ -7,9 +7,11 @@ import { Input } from '../ui/input';
 import { langGraphService, LangGraphWorkflow } from '../../services/langGraphService';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
+import { useAuthStore } from '../../TenantNodePlatform/authStore';
 
 export const LangGraphDashboard: React.FC = () => {
   const navigate = useNavigate();
+  const { currentTenantId } = useAuthStore();
   const [workflows, setWorkflows] = useState<LangGraphWorkflow[]>([]);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
@@ -17,12 +19,12 @@ export const LangGraphDashboard: React.FC = () => {
 
   useEffect(() => {
     loadWorkflows();
-  }, []);
+  }, [currentTenantId]);
 
   const loadWorkflows = async () => {
     try {
       setLoading(true);
-      const data = await langGraphService.getAllWorkflows();
+      const data = await langGraphService.getAllWorkflows(currentTenantId || undefined);
       setWorkflows(data);
     } catch (error) {
       console.error('Failed to load workflows:', error);

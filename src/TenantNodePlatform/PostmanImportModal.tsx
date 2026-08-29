@@ -24,7 +24,8 @@ import {
 } from './postmanParser';
 import { useAuthStore } from './authStore';
 import { useTnpStore } from './tnpStore';
-import type { Blueprint } from './types';
+import * as api from './tnpService';
+import type { Blueprint, BlueprintCreate } from './types';
 import toast from 'react-hot-toast';
 
 interface PostmanImportModalProps {
@@ -109,26 +110,28 @@ export const PostmanImportModal: React.FC<PostmanImportModalProps> = ({
       const tenantId = currentTenantId || 'tenant-gsa';
       const userEmail = currentUser?.email || 'admin@tenant.gov';
 
-      const newBlueprints: Blueprint[] = chosen.map((ep) =>
-        convertEndpointToBlueprint(ep, tenantId, userEmail)
-      );
+      const createPayloads: BlueprintCreate[] = chosen.map((ep) => {
+        const full = convertEndpointToBlueprint(ep, tenantId, userEmail);
+        return {
+          name: full.name,
+          description: full.description,
+          source_type: full.source_type,
+          graph_definition: full.graph_definition as any,
+          input_contract: full.input_contract,
+          output_contract: full.output_contract,
+          created_by: userEmail,
+        };
+      });
 
-      // Save to localStorage & sync store
-      const existingStr = localStorage.getItem(`tnp_blueprints_${tenantId}`) || '[]';
-      const existing: Blueprint[] = JSON.parse(existingStr);
-      localStorage.setItem(
-        `tnp_blueprints_${tenantId}`,
-        JSON.stringify([...newBlueprints, ...existing])
-      );
-
+      const created = await api.batchCreateBlueprints(tenantId, createPayloads);
       await refreshBlueprints();
       toast.success(
-        `🎉 Successfully created & published ${newBlueprints.length} Node Blueprints for ${currentTenantName}!`
+        `🎉 Successfully created & published ${created.length} Node Blueprints for ${currentTenantName}!`
       );
-      if (onSuccess) onSuccess(newBlueprints);
+      if (onSuccess) onSuccess(created);
       onClose();
-    } catch {
-      toast.error('Failed to save blueprints');
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'Failed to save blueprints to backend');
     } finally {
       setIsProcessing(false);
     }

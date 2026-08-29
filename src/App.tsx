@@ -3,25 +3,104 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { Toaster } from 'react-hot-toast';
 import { ThemeProvider } from './contexts/ThemeContext';
 import Layout from './components/Layout/Layout';
+import { PrivateRoute } from './components/guards/PrivateRoute';
+
+// Existing pages
 import { LangGraphBuilder } from './components/LangGraph/LangGraphBuilder';
 import { LangGraphDashboard } from './components/LangGraph/LangGraphDashboard';
-import { NodeBuilder } from './components/NodeBuilder/NodeBuilder';
 import { MyNodesPage } from './TenantNodePlatform/MyNodesPage';
 import { TenantLoginPage } from './TenantNodePlatform/TenantLoginPage';
+
+// New framework (Super Admin) pages
+import { FrameworkDashboard } from './framework/FrameworkDashboard';
+import { FrameworkNodeLibrary } from './framework/FrameworkNodeLibrary';
+import { TenantManagementPage } from './framework/TenantManagementPage';
+import { AuditLogPage } from './framework/AuditLogPage';
+
+// New tenant pages
+import { TenantDashboard } from './tenant/TenantDashboard';
+import { ExecutionHistoryPage } from './tenant/ExecutionHistoryPage';
 
 function App() {
   return (
     <ThemeProvider>
       <Router>
         <Routes>
+          {/* Public: Login */}
           <Route path="/login" element={<TenantLoginPage />} />
-          <Route path="/" element={<Layout />}>
-            <Route index element={<Navigate to="/langgraph" replace />} />
+
+          {/* Protected: All app routes under Layout */}
+          <Route
+            path="/"
+            element={
+              <PrivateRoute>
+                <Layout />
+              </PrivateRoute>
+            }
+          >
+            {/* Default redirect */}
+            <Route index element={<Navigate to="/tenant/dashboard" replace />} />
+
+            {/* ---------- Tenant Shell ---------- */}
+            <Route path="/tenant/dashboard" element={<TenantDashboard />} />
+            <Route path="/tenant/executions" element={<ExecutionHistoryPage />} />
+            <Route path="/tenant/audit" element={<AuditLogPage platformWide={false} />} />
+
+            {/* ---------- Workflow Studio (existing) ---------- */}
             <Route path="/langgraph" element={<LangGraphDashboard />} />
             <Route path="/langgraph/builder/:workflowId" element={<LangGraphBuilder />} />
-            <Route path="/node-builder" element={<NodeBuilder />} />
-            <Route path="/my-nodes" element={<MyNodesPage />} />
+
+            {/* ---------- Tenant Node Library (Tenant Admin & Super Admin only) ---------- */}
+            <Route
+              path="/my-nodes"
+              element={
+                <PrivateRoute requiredRole="TENANT_ADMIN">
+                  <MyNodesPage />
+                </PrivateRoute>
+              }
+            />
+
+            {/* ---------- Framework Admin (Super Admin only) ---------- */}
+            <Route
+              path="/framework/dashboard"
+              element={
+                <PrivateRoute requiredRole="SUPER_ADMIN">
+                  <FrameworkDashboard />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/framework/nodes"
+              element={
+                <PrivateRoute requiredRole="SUPER_ADMIN">
+                  <FrameworkNodeLibrary />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/framework/tenants"
+              element={
+                <PrivateRoute requiredRole="SUPER_ADMIN">
+                  <TenantManagementPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/framework/audit"
+              element={
+                <PrivateRoute requiredRole="SUPER_ADMIN">
+                  <AuditLogPage platformWide={true} />
+                </PrivateRoute>
+              }
+            />
+
+            {/* ---------- Legacy redirects ---------- */}
+            <Route path="/metrics" element={<Navigate to="/tenant/dashboard" replace />} />
+            <Route path="/champion-challenger" element={<Navigate to="/langgraph" replace />} />
           </Route>
+
+          {/* Catch-all */}
+          <Route path="*" element={<Navigate to="/tenant/dashboard" replace />} />
         </Routes>
 
         <Toaster

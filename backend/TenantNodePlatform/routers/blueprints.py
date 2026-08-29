@@ -42,6 +42,17 @@ def create_blueprint(tenant_id: str, create: BlueprintCreate):
     return bp.model_dump(mode="json")
 
 
+@router.post("/api/tenant-platform/tenants/{tenant_id}/blueprints/batch", status_code=status.HTTP_201_CREATED)
+def batch_create_blueprints(tenant_id: str, creates: list[BlueprintCreate]):
+    service = get_blueprint_service()
+    created = []
+    for c in creates:
+        bp = service.create_blueprint(tenant_id, c)
+        service.publish_blueprint(tenant_id, bp.blueprint_id)
+        created.append(bp.model_dump(mode="json"))
+    return {"items": created, "total": len(created)}
+
+
 # --------------------------------------------------------------------------- #
 # Blueprint-level routes (tenant_id resolved from blueprint ownership)
 # --------------------------------------------------------------------------- #
@@ -90,6 +101,15 @@ def publish_blueprint(blueprint_id: str):
     if bp is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Blueprint not found")
     return bp.model_dump(mode="json")
+
+
+@router.delete("/api/tenant-platform/blueprints/{blueprint_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_blueprint(blueprint_id: str):
+    service = get_blueprint_service()
+    tenant_id = _resolve_tenant_for_blueprint(blueprint_id)
+    if not service.delete_blueprint(tenant_id, blueprint_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Blueprint not found")
+    return None
 
 
 @router.get("/api/tenant-platform/blueprints/{blueprint_id}/versions")

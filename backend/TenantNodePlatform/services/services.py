@@ -18,15 +18,24 @@ from ..models import (
     BlueprintStatus,
     BlueprintUpdate,
     BlueprintVersion,
+    LoginRequest,
+    LoginResponse,
+    PersonaItem,
     Tenant,
     TenantCreate,
     TenantUpdate,
+    User,
+    UserCreate,
+    UserProfile,
+    UserRole,
+    UserUpdate,
 )
 from ..repositories.in_memory import (
     InMemoryBlueprintRepository,
     InMemoryBlueprintVersionRepository,
     InMemoryDependencyRepository,
     InMemoryTenantRepository,
+    InMemoryUserRepository,
 )
 
 
@@ -35,10 +44,20 @@ class TenantService:
         self._repo = tenant_repo
 
     def create_tenant(self, create: TenantCreate) -> Tenant:
+        slug = create.slug or create.tenant_name.lower().replace(" ", "-").replace("_", "-")
+        tenant_id = f"tenant-{slug}" if not slug.startswith("tenant-") else slug
+        
+        # Ensure unique tenant_id
+        if self._repo.get_tenant(tenant_id):
+            tenant_id = f"{tenant_id}-{str(uuid.uuid4())[:4]}"
+
         tenant = Tenant(
-            tenant_id=str(uuid.uuid4()),
+            tenant_id=tenant_id,
             tenant_name=create.tenant_name,
-            metadata=create.metadata,
+            slug=slug,
+            category=create.category or "Enterprise",
+            description=create.description or "",
+            metadata=create.metadata or {"icon": "Building2"},
         )
         return self._repo.create_tenant(tenant)
 
@@ -199,3 +218,179 @@ class BlueprintMaterializationService:
             "blueprint_name": bp.name,
             "version": bp.version,
         }
+
+
+class AuthService:
+    def __init__(
+        self,
+        user_repo: InMemoryUserRepository,
+        tenant_repo: InMemoryTenantRepository,
+    ) -> None:
+        self._user_repo = user_repo
+        self._tenant_repo = tenant_repo
+
+    def login(self, req: LoginRequest) -> LoginResponse:
+        email = req.email.strip().lower()
+        user = self._user_repo.get_user_by_email(email)
+        if not user:
+            raise ValueError(f"User with email '{req.email}' not found.")
+
+        effective_tenant_id = user.tenant_id
+        effective_tenant_name = user.tenant_name
+
+        if user.role == UserRole.SUPER_ADMIN and req.tenant_id:
+            effective_tenant_id = req.tenant_id
+            if req.tenant_id == "all":
+                effective_tenant_name = "All Tenants (Super Admin)"
+            else:
+                t = self._tenant_repo.get_tenant(req.tenant_id)
+                if t:
+                    effective_tenant_name = t.tenant_name
+
+        profile = UserProfile(
+            id=user.id,
+            name=user.name,
+            email=user.email,
+            role=user.role,
+            tenant_id=effective_tenant_id,
+            tenant_name=effective_tenant_name,
+            avatar=user.avatar,
+            title=user.title,
+        )
+
+        all_tenants = self._tenant_repo.list_tenants()
+        token = f"tnp-jwt-{user.id}-{int(dt.datetime.now(dt.UTC).timestamp())}"
+
+        return LoginResponse(
+            success=True,
+            token=token,
+            user=profile,
+            available_tenants=all_tenants,
+        )
+
+    def get_personas(self) -> List[PersonaItem]:
+        return self._user_repo.list_personas()
+
+    def get_user_by_id(self, user_id: str) -> Optional[UserProfile]:
+        user = self._user_repo.get_user_by_id(user_id)
+        if not user:
+            return None
+        return UserProfile(
+            id=user.id,
+            name=user.name,
+            email=user.email,
+            role=user.role,
+            tenant_id=user.tenant_id,
+            tenant_name=user.tenant_name,
+            avatar=user.avatar,
+            title=user.title,
+        )
+
+
+class UserService:
+    def __init__(
+        self,
+        user_repo: InMemoryUserRepository,
+        tenant_repo: InMemoryTenantRepository,
+    ) -> None:
+        self._user_repo = user_repo
+        self._tenant_repo = tenant_repo
+
+    def list_users(self, tenant_id: Optional[str] = None) -> List[UserProfile]:
+        users = self._user_repo.list_users(tenant_id=tenant_id)
+        return [
+            UserProfile(
+                id=u.id,
+                name=u.name,
+                email=u.email,
+                role=u.role,
+                tenant_id=u.tenant_id,
+                tenant_name=u.tenant_name,
+                avatar=u.avatar,
+                title=u.title,
+            )
+            for u in users
+        ]
+
+    def get_user(self, user_id: str) -> Optional[UserProfile]:
+        u = self._user_repo.get_user_by_id(user_id)
+        if not u:
+            return None
+        return UserProfile(
+            id=u.id,
+            name=u.name,
+            email=u.email,
+            role=u.role,
+            tenant_id=u.tenant_id,
+            tenant_name=u.tenant_name,
+            avatar=u.avatar,
+            title=u.title,
+        )
+
+    def create_user(self, create: UserCreate) -> UserProfile:
+        existing = self._user_repo.get_user_by_email(create.email)
+        if existing:
+            raise ValueError(f"User with email '{create.email}' already exists")
+
+        tenant_name = "Global / Cross-Tenant"
+        if create.tenant_id != "all":
+            t = self._tenant_repo.get_tenant(create.tenant_id)
+            if not t:
+                raise ValueError(f"Tenant '{create.tenant_id}' not found")
+            tenant_name = t.tenant_name
+
+        user_id = f"usr-{str(uuid.uuid4())[:8]}"
+        user = User(
+            id=user_id,
+            name=create.name,
+            email=create.email.strip().lower(),
+            role=create.role,
+            tenant_id=create.tenant_id,
+            tenant_name=tenant_name,
+            avatar=create.avatar or "👤",
+            title=create.title or "Workflow Operator",
+            password_hash=create.password or "password123",
+        )
+        saved = self._user_repo.create_user(user)
+        return UserProfile(
+            id=saved.id,
+            name=saved.name,
+            email=saved.email,
+            role=saved.role,
+            tenant_id=saved.tenant_id,
+            tenant_name=saved.tenant_name,
+            avatar=saved.avatar,
+            title=saved.title,
+        )
+
+    def update_user(self, user_id: str, updates: UserUpdate) -> Optional[UserProfile]:
+        existing = self._user_repo.get_user_by_id(user_id)
+        if not existing:
+            return None
+        
+        update_dict = updates.model_dump(exclude_unset=True)
+        if "tenant_id" in update_dict:
+            t = self._tenant_repo.get_tenant(update_dict["tenant_id"])
+            if t:
+                update_dict["tenant_name"] = t.tenant_name
+
+        if "password" in update_dict:
+            update_dict["password_hash"] = update_dict.pop("password")
+
+        updated = self._user_repo.update_user(user_id, update_dict)
+        if not updated:
+            return None
+        return UserProfile(
+            id=updated.id,
+            name=updated.name,
+            email=updated.email,
+            role=updated.role,
+            tenant_id=updated.tenant_id,
+            tenant_name=updated.tenant_name,
+            avatar=updated.avatar,
+            title=updated.title,
+        )
+
+    def delete_user(self, user_id: str) -> bool:
+        return self._user_repo.delete_user(user_id)
+

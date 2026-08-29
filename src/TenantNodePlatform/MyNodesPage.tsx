@@ -33,6 +33,7 @@ import { PostmanImportModal } from './PostmanImportModal';
 import { NodeDetailModal } from './NodeDetailModal';
 import { TestNodeModal } from './TestNodeModal';
 import { VersionHistoryModal } from './VersionHistoryModal';
+import { TenantUserManagementModal } from './TenantUserManagementModal';
 import {
   StatusBadge,
   statusConfig,
@@ -71,6 +72,7 @@ export const MyNodesPage: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
   const [showWizard, setShowWizard] = useState(false);
   const [showPostmanModal, setShowPostmanModal] = useState(false);
+  const [showTenantUserModal, setShowTenantUserModal] = useState(false);
   const [detailBlueprint, setDetailBlueprint] = useState<Blueprint | null>(null);
   const [testBlueprint, setTestBlueprint] = useState<Blueprint | null>(null);
   const [versionBlueprint, setVersionBlueprint] = useState<Blueprint | null>(null);
@@ -120,24 +122,20 @@ export const MyNodesPage: React.FC = () => {
     }
     setActionLoading(bp.blueprint_id);
     try {
-      const selectedTid = selectedTenantId || 'tenant-gsa';
-      const duplicate: Blueprint = {
-        ...bp,
-        blueprint_id: `bp-${Date.now()}`,
+      const selectedTid = selectedTenantId || bp.tenant_id || 'tenant-gsa';
+      const created = await api.createBlueprint(selectedTid, {
         name: `${bp.name} (Copy)`,
-        status: 'DRAFT',
-        version: 1,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-
-      const existingStr = localStorage.getItem(`tnp_blueprints_${selectedTid}`) || '[]';
-      const existing = JSON.parse(existingStr);
-      localStorage.setItem(`tnp_blueprints_${selectedTid}`, JSON.stringify([duplicate, ...existing]));
+        description: bp.description,
+        source_type: bp.source_type,
+        graph_definition: bp.graph_definition as any,
+        input_contract: bp.input_contract,
+        output_contract: bp.output_contract,
+        created_by: currentUser?.email || 'admin@tenant.gov',
+      });
       await refreshBlueprints();
-      toast.success(`Duplicated as "${duplicate.name}"`);
-    } catch {
-      toast.error('Failed to duplicate blueprint');
+      toast.success(`Duplicated as "${created.name}"`);
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'Failed to duplicate blueprint');
     } finally {
       setActionLoading(null);
     }
@@ -302,11 +300,20 @@ export const MyNodesPage: React.FC = () => {
             )}
           </div>
 
-          <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-            <Shield size={14} className="text-indigo-500" />
-            <span>Role: <strong>{currentUser?.role || 'BUSINESS_USER'}</strong></span>
-            <span>•</span>
-            <span>User: <strong>{currentUser?.name}</strong></span>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+              <Shield size={14} className="text-indigo-500" />
+              <span>Role: <strong>{currentUser?.role || 'BUSINESS_USER'}</strong></span>
+              <span>•</span>
+              <span>User: <strong>{currentUser?.name}</strong></span>
+            </div>
+
+            <button
+              onClick={() => setShowTenantUserModal(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900 text-indigo-700 dark:text-indigo-300 rounded-lg text-xs font-bold border border-indigo-200 dark:border-indigo-800 transition-all"
+            >
+              <Building2 size={13} /> Manage Tenants & Users
+            </button>
           </div>
         </div>
 
@@ -623,6 +630,15 @@ export const MyNodesPage: React.FC = () => {
         <VersionHistoryModal
           blueprint={versionBlueprint}
           onClose={() => setVersionBlueprint(null)}
+        />
+      )}
+      {showTenantUserModal && (
+        <TenantUserManagementModal
+          isOpen={showTenantUserModal}
+          onClose={() => {
+            setShowTenantUserModal(false);
+            refreshBlueprints();
+          }}
         />
       )}
     </div>

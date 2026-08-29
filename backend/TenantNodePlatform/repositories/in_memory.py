@@ -14,12 +14,21 @@ import threading
 from typing import Dict, List, Optional, Set
 
 from ..models import (
+    AuditLog,
     Blueprint,
     BlueprintDependency,
     BlueprintUpdate,
     BlueprintVersion,
+    FrameworkNode,
+    FrameworkNodeUpdate,
+    NodeExecution,
+    PersonaItem,
     Tenant,
+    TenantNodeAccess,
     TenantUpdate,
+    User,
+    WorkflowExecution,
+    WorkflowExecutionUpdate,
 )
 
 
@@ -222,3 +231,296 @@ class InMemoryDependencyRepository:
                     bucket.pop(i)
                     return True
             return False
+
+
+class InMemoryUserRepository:
+    """Dict-backed user and persona repository."""
+
+    def __init__(self) -> None:
+        # { user_id: User }
+        self._users: Dict[str, User] = {}
+        # { email_lowercase: user_id }
+        self._by_email: Dict[str, str] = {}
+        # { persona_key: PersonaItem }
+        self._personas: Dict[str, PersonaItem] = {}
+        self._lock = threading.RLock()
+
+    def create_user(self, user: User) -> User:
+        with self._lock:
+            self._users[user.id] = copy.deepcopy(user)
+            self._by_email[user.email.strip().lower()] = user.id
+            # Auto-register/sync persona so it appears in quick login and switcher
+            persona_key = f"usr_{user.id}"
+            self._personas[persona_key] = PersonaItem(
+                key=persona_key,
+                name=user.name,
+                email=user.email,
+                role=user.role,
+                tenant_id=user.tenant_id,
+                tenant_name=user.tenant_name,
+                title=user.title or "Member",
+                avatar=user.avatar or "👤",
+                description=f"{user.tenant_name} • {user.role.value}",
+            )
+            return copy.deepcopy(user)
+
+    def update_user(self, user_id: str, updates: dict) -> Optional[User]:
+        with self._lock:
+            u = self._users.get(user_id)
+            if not u:
+                return None
+            data = u.model_dump()
+            data.update(updates)
+            updated = User(**data)
+            self._users[user_id] = updated
+            self._by_email[updated.email.strip().lower()] = user_id
+
+            persona_key = f"usr_{user_id}"
+            self._personas[persona_key] = PersonaItem(
+                key=persona_key,
+                name=updated.name,
+                email=updated.email,
+                role=updated.role,
+                tenant_id=updated.tenant_id,
+                tenant_name=updated.tenant_name,
+                title=updated.title or "Member",
+                avatar=updated.avatar or "👤",
+                description=f"{updated.tenant_name} • {updated.role.value}",
+            )
+            return copy.deepcopy(updated)
+
+    def delete_user(self, user_id: str) -> bool:
+        with self._lock:
+            u = self._users.pop(user_id, None)
+            if u:
+                self._by_email.pop(u.email.strip().lower(), None)
+                self._personas.pop(f"usr_{user_id}", None)
+                # also check if any legacy persona used this email
+                to_delete = [k for k, p in self._personas.items() if p.email.strip().lower() == u.email.strip().lower()]
+                for k in to_delete:
+                    self._personas.pop(k, None)
+                return True
+            return False
+
+    def get_user_by_email(self, email: str) -> Optional[User]:
+        with self._lock:
+            uid = self._by_email.get(email.strip().lower())
+            if not uid:
+                return None
+            return copy.deepcopy(self._users.get(uid))
+
+    def get_user_by_id(self, user_id: str) -> Optional[User]:
+        with self._lock:
+            u = self._users.get(user_id)
+            return copy.deepcopy(u) if u else None
+
+    def list_users(self, tenant_id: Optional[str] = None) -> List[User]:
+        with self._lock:
+            if tenant_id and tenant_id != "all":
+                return [copy.deepcopy(u) for u in self._users.values() if u.tenant_id == tenant_id]
+            return [copy.deepcopy(u) for u in self._users.values()]
+
+    def set_persona(self, persona: PersonaItem) -> None:
+        with self._lock:
+            self._personas[persona.key] = copy.deepcopy(persona)
+
+    def list_personas(self) -> List[PersonaItem]:
+        with self._lock:
+            return [copy.deepcopy(p) for p in self._personas.values()]
+
+    def get_persona(self, key: str) -> Optional[PersonaItem]:
+        with self._lock:
+            p = self._personas.get(key)
+            return copy.deepcopy(p) if p else None
+
+
+class InMemoryFrameworkNodeRepository:
+    """Dict-backed framework node store. Keyed by node_type for fast lookup."""
+
+    def __init__(self) -> None:
+        self._nodes: Dict[str, FrameworkNode] = {}   # node_id -> FrameworkNode
+        self._by_type: Dict[str, str] = {}            # node_type -> node_id
+        self._lock = threading.RLock()
+
+    def create(self, node: FrameworkNode) -> FrameworkNode:
+        with self._lock:
+            self._nodes[node.id] = copy.deepcopy(node)
+            self._by_type[node.node_type] = node.id
+            return copy.deepcopy(node)
+
+    def get(self, node_id: str) -> Optional[FrameworkNode]:
+        with self._lock:
+            n = self._nodes.get(node_id)
+            return copy.deepcopy(n) if n else None
+
+    def get_by_type(self, node_type: str) -> Optional[FrameworkNode]:
+        with self._lock:
+            nid = self._by_type.get(node_type)
+            if not nid:
+                return None
+            return copy.deepcopy(self._nodes.get(nid))
+
+    def list_all(self) -> List[FrameworkNode]:
+        with self._lock:
+            return [copy.deepcopy(n) for n in self._nodes.values()]
+
+    def update(self, node_id: str, updates: FrameworkNodeUpdate) -> Optional[FrameworkNode]:
+        with self._lock:
+            n = self._nodes.get(node_id)
+            if n is None:
+                return None
+            data = n.model_dump()
+            data.update(updates.model_dump(exclude_unset=True))
+            import datetime as _dt
+            data["updated_at"] = _dt.datetime.now(_dt.UTC)
+            updated = FrameworkNode(**data)
+            self._nodes[node_id] = updated
+            return copy.deepcopy(updated)
+
+    def delete(self, node_id: str) -> bool:
+        with self._lock:
+            n = self._nodes.pop(node_id, None)
+            if n:
+                self._by_type.pop(n.node_type, None)
+                return True
+            return False
+
+
+class InMemoryTenantNodeAccessRepository:
+    """Controls per-tenant framework node availability."""
+
+    def __init__(self) -> None:
+        # { tenant_id: { node_type: TenantNodeAccess } }
+        self._access: Dict[str, Dict[str, TenantNodeAccess]] = {}
+        self._lock = threading.RLock()
+
+    def get_access_list(self, tenant_id: str) -> List[TenantNodeAccess]:
+        with self._lock:
+            bucket = self._access.get(tenant_id, {})
+            return [copy.deepcopy(a) for a in bucket.values()]
+
+    def set_access(self, access: TenantNodeAccess) -> TenantNodeAccess:
+        with self._lock:
+            self._access.setdefault(tenant_id := access.tenant_id, {})[access.node_type] = copy.deepcopy(access)
+            return copy.deepcopy(access)
+
+    def is_enabled(self, tenant_id: str, node_type: str) -> bool:
+        with self._lock:
+            a = self._access.get(tenant_id, {}).get(node_type)
+            # Default: enabled if no record exists
+            return a.is_enabled if a is not None else True
+
+    def set_bulk(self, tenant_id: str, all_node_types: List[str], enabled_types: List[str]) -> List[TenantNodeAccess]:
+        """Set access for ALL node types for a tenant at once."""
+        import datetime as _dt
+        with self._lock:
+            results = []
+            for nt in all_node_types:
+                access = TenantNodeAccess(
+                    tenant_id=tenant_id,
+                    framework_node_id="",
+                    node_type=nt,
+                    is_enabled=nt in enabled_types,
+                    updated_at=_dt.datetime.now(_dt.UTC),
+                )
+                self._access.setdefault(tenant_id, {})[nt] = access
+                results.append(copy.deepcopy(access))
+            return results
+
+
+class InMemoryAuditRepository:
+    """Append-only audit log store."""
+
+    def __init__(self) -> None:
+        self._logs: List[AuditLog] = []
+        self._lock = threading.RLock()
+
+    def append(self, log: AuditLog) -> AuditLog:
+        with self._lock:
+            self._logs.append(copy.deepcopy(log))
+            return copy.deepcopy(log)
+
+    def list_all(
+        self,
+        tenant_id: Optional[str] = None,
+        actor_user_id: Optional[str] = None,
+        action: Optional[str] = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> List[AuditLog]:
+        with self._lock:
+            results = list(self._logs)
+            if tenant_id and tenant_id != "all":
+                results = [r for r in results if r.actor_tenant_id == tenant_id or r.target_tenant_id == tenant_id]
+            if actor_user_id:
+                results = [r for r in results if r.actor_user_id == actor_user_id]
+            if action:
+                results = [r for r in results if r.action == action]
+            # Newest first
+            results.sort(key=lambda x: x.timestamp, reverse=True)
+            return [copy.deepcopy(r) for r in results[offset: offset + limit]]
+
+    def count(self, tenant_id: Optional[str] = None) -> int:
+        with self._lock:
+            if tenant_id and tenant_id != "all":
+                return sum(1 for r in self._logs if r.actor_tenant_id == tenant_id or r.target_tenant_id == tenant_id)
+            return len(self._logs)
+
+
+class InMemoryExecutionRepository:
+    """Tenant-partitioned workflow execution store."""
+
+    def __init__(self) -> None:
+        # { tenant_id: { execution_id: WorkflowExecution } }
+        self._execs: Dict[str, Dict[str, WorkflowExecution]] = {}
+        self._lock = threading.RLock()
+
+    def _bucket(self, tenant_id: str) -> Dict[str, WorkflowExecution]:
+        return self._execs.setdefault(tenant_id, {})
+
+    def create(self, execution: WorkflowExecution) -> WorkflowExecution:
+        with self._lock:
+            self._bucket(execution.tenant_id)[execution.id] = copy.deepcopy(execution)
+            return copy.deepcopy(execution)
+
+    def get(self, tenant_id: str, execution_id: str) -> Optional[WorkflowExecution]:
+        with self._lock:
+            e = self._bucket(tenant_id).get(execution_id)
+            return copy.deepcopy(e) if e else None
+
+    def list_for_tenant(
+        self,
+        tenant_id: str,
+        workflow_name: Optional[str] = None,
+        status: Optional[str] = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> List[WorkflowExecution]:
+        with self._lock:
+            results = list(self._bucket(tenant_id).values())
+            if workflow_name:
+                results = [r for r in results if r.workflow_name == workflow_name]
+            if status:
+                results = [r for r in results if r.status == status]
+            results.sort(key=lambda x: x.started_at, reverse=True)
+            return [copy.deepcopy(r) for r in results[offset: offset + limit]]
+
+    def count(self, tenant_id: str) -> int:
+        with self._lock:
+            return len(self._bucket(tenant_id))
+
+    def update(self, tenant_id: str, execution_id: str, updates: WorkflowExecutionUpdate) -> Optional[WorkflowExecution]:
+        import datetime as _dt
+        with self._lock:
+            e = self._bucket(tenant_id).get(execution_id)
+            if e is None:
+                return None
+            data = e.model_dump()
+            data.update(updates.model_dump(exclude_unset=True))
+            updated = WorkflowExecution(**data)
+            self._bucket(tenant_id)[execution_id] = updated
+            return copy.deepcopy(updated)
+
+    def count_all(self) -> int:
+        with self._lock:
+            return sum(len(b) for b in self._execs.values())

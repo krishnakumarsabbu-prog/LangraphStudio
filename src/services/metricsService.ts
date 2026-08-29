@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { generateMockData, generateMockNodeExecutions } from '../utils/mockDataGenerator';
 
-const API_BASE_URL = import.meta.env.VITE_BACKEND_API_URL || 'http://localhost:8000';
+const API_BASE_URL = import.meta.env.VITE_BACKEND_API_URL || 'http://localhost:8001';
 const USE_MOCK_DATA = import.meta.env.VITE_USE_MOCK_DATA === 'true';
 
 const api = axios.create({
