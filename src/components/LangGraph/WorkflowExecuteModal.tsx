@@ -238,11 +238,31 @@ export const WorkflowExecuteModal: React.FC<WorkflowExecuteModalProps> = ({
       const workflow = JSON.parse(workflowJSON);
       const inputs = JSON.parse(inputJson);
 
-      const backendUrl = import.meta.env.VITE_BACKEND_API_URL || 'http://localhost:8000';
-      const apiResponse = await axios.post(`${backendUrl}/execute`, {
-        graph: workflow.graph,
-        input: inputs,
-      });
+      const backendUrl = import.meta.env.VITE_BACKEND_API_URL || 'http://localhost:8001';
+      const storedAuth = localStorage.getItem('auth-storage');
+      let token = null;
+      let tenantId = 'demo-tenant-0001';
+      if (storedAuth) {
+        try {
+          const parsed = JSON.parse(storedAuth);
+          token = parsed.state?.token;
+          tenantId = parsed.state?.currentTenantId || tenantId;
+        } catch {}
+      }
+
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const apiResponse = await axios.post(
+        `${backendUrl}/api/tenant-platform/execute`,
+        {
+          graph: workflow.graph,
+          input: inputs,
+          tenant_id: tenantId,
+          workflow_name: workflow.name || 'Ad-hoc Workflow',
+        },
+        { headers }
+      );
 
       const executionResult = apiResponse.data;
       setResponse(JSON.stringify(executionResult, null, 2));

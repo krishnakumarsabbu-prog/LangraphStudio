@@ -81,8 +81,9 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
+    allow_origins=["*"],  # Permits local dev frontends on any port while enabling credentials
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -97,6 +98,7 @@ from .routers import framework_nodes as framework_nodes_router  # noqa: E402
 from .routers import executions as executions_router  # noqa: E402
 from .routers import audit as audit_router  # noqa: E402
 from .routers import impersonate as impersonate_router  # noqa: E402
+from .routers import execute as execute_router  # noqa: E402
 
 app.include_router(auth_router.router)
 app.include_router(tenants_router.router)
@@ -108,6 +110,7 @@ app.include_router(framework_nodes_router.router)
 app.include_router(executions_router.router)
 app.include_router(audit_router.router)
 app.include_router(impersonate_router.router)
+app.include_router(execute_router.router)
 
 
 # --------------------------------------------------------------------------- #

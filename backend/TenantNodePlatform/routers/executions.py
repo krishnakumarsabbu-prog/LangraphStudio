@@ -17,15 +17,15 @@ def _get_repo():
     return _execution_repo
 
 
-def _resolve_tenant(authorization: Optional[str]) -> str:
-    """Resolve tenant_id from bearer token."""
+def _resolve_tenant(authorization: Optional[str]):
+    """Resolve tenant_id and user from bearer token."""
     if not authorization:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authorization header missing")
-    token = authorization.replace("Bearer ", "").strip()
-    parts = token.split("-")
-    if len(parts) < 3 or parts[0] != "tnp" or parts[1] != "jwt":
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
-    user_id = "-".join(parts[2:-1]) if len(parts) > 3 else parts[2]
+    from ..security import verify_access_token
+    claims = verify_access_token(authorization)
+    if not claims:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
+    user_id = claims.get("sub") or claims.get("user_id")
     from ..main import _auth_service
     user = _auth_service.get_user_by_id(user_id)
     if not user:

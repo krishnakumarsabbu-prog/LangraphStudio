@@ -19,11 +19,11 @@ def _get_repo():
 def _resolve_user(authorization: Optional[str]):
     if not authorization:
         return None
-    token = authorization.replace("Bearer ", "").strip()
-    parts = token.split("-")
-    if len(parts) < 3 or parts[0] != "tnp" or parts[1] != "jwt":
+    from ..security import verify_access_token
+    claims = verify_access_token(authorization)
+    if not claims:
         return None
-    user_id = "-".join(parts[2:-1]) if len(parts) > 3 else parts[2]
+    user_id = claims.get("sub") or claims.get("user_id")
     from ..main import _auth_service
     return _auth_service.get_user_by_id(user_id)
 

@@ -32,14 +32,14 @@ def _get_tenant_service():
 
 
 def _require_super_admin(authorization: Optional[str]) -> None:
-    """Simple token-based super admin check."""
+    """Token-based super admin check with JWT signature verification."""
     if not authorization:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authorization header missing")
-    token = authorization.replace("Bearer ", "").strip()
-    parts = token.split("-")
-    if len(parts) < 3 or parts[0] != "tnp" or parts[1] != "jwt":
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
-    user_id = "-".join(parts[2:-1]) if len(parts) > 3 else parts[2]
+    from ..security import verify_access_token
+    claims = verify_access_token(authorization)
+    if not claims:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
+    user_id = claims.get("sub") or claims.get("user_id")
     from ..main import _auth_service
     user = _auth_service.get_user_by_id(user_id)
     if not user or user.role != UserRole.SUPER_ADMIN:

@@ -40,15 +40,17 @@ def get_me(authorization: str | None = Header(default=None)):
     if not authorization:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authorization header missing")
     
-    # Token format: tnp-jwt-{user_id}-{timestamp}
+    from ..security import verify_access_token
     token = authorization.replace("Bearer ", "").strip()
-    parts = token.split("-")
-    if len(parts) >= 3 and parts[0] == "tnp" and parts[1] == "jwt":
-        # Extract user_id
-        user_id = "-".join(parts[2:-1]) if len(parts) > 3 else parts[2]
+    claims = verify_access_token(token)
+    if not claims:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
+
+    user_id = claims.get("sub") or claims.get("user_id")
+    if user_id:
         service = get_auth_service()
         user = service.get_user_by_id(user_id)
         if user:
             return user
 
-    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")

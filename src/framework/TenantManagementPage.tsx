@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   Building2, Plus, Search, Eye, Ban, CheckCircle2,
   Trash2, Edit2, Users, Shield, ChevronRight, RefreshCw,
-  Layers, UserCog, MoreVertical, AlertTriangle,
+  Layers, UserCog, MoreVertical, AlertTriangle, X, Lock, Mail, User,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -36,6 +36,252 @@ const categoryColors: Record<string, string> = {
   Sandbox: 'from-cyan-500 to-blue-500',
 };
 
+// -------------------------------------------------------------------------
+// Provision Tenant & Initial Admin Modal
+// -------------------------------------------------------------------------
+interface CreateTenantModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onCreated: () => void;
+}
+
+const CreateTenantModal: React.FC<CreateTenantModalProps> = ({ isOpen, onClose, onCreated }) => {
+  const [formData, setFormData] = useState({
+    tenant_name: '',
+    category: 'Federal Agency',
+    description: '',
+    admin_name: '',
+    admin_email: '',
+    admin_password: '',
+  });
+  const [saving, setSaving] = useState(false);
+
+  if (!isOpen) return null;
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.tenant_name.trim()) {
+      toast.error('Tenant organization name is required');
+      return;
+    }
+    if (!formData.admin_name.trim() || !formData.admin_email.trim()) {
+      toast.error('Initial Tenant Admin name and email are required');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      // 1. Create Tenant
+      const slug = formData.tenant_name.toLowerCase().replace(/[^a-z0-9]/g, '-');
+      const createdTenant = await api.createTenant({
+        tenant_name: formData.tenant_name.trim(),
+        slug: slug,
+        category: formData.category,
+        description: formData.description.trim() || undefined,
+        metadata: { icon: 'Building2' },
+      });
+
+      // 2. Provision initial Tenant Admin
+      await api.createUser({
+        name: formData.admin_name.trim(),
+        email: formData.admin_email.trim().toLowerCase(),
+        password: formData.admin_password.trim() || 'password123',
+        role: 'TENANT_ADMIN',
+        tenant_id: createdTenant.tenant_id,
+        title: `${formData.tenant_name} Admin`,
+        avatar: '🛡️',
+      });
+
+      // 3. Set default node access
+      try {
+        const fnodes = await api.listFrameworkNodes();
+        const allTypes = fnodes.map((f: any) => f.node_type);
+        await api.updateTenantNodeAccess(createdTenant.tenant_id, allTypes);
+      } catch {}
+
+      toast.success(`Tenant "${formData.tenant_name}" and Admin "${formData.admin_email}" provisioned successfully!`);
+      onCreated();
+      onClose();
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'Failed to provision tenant');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+      <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-2xl w-full max-w-xl border border-light-border dark:border-dark-border overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-light-border dark:border-dark-border bg-gradient-to-r from-violet-600 to-indigo-600 text-white">
+          <div className="flex items-center gap-2.5">
+            <Building2 size={20} />
+            <div>
+              <h2 className="font-bold text-base">Provision New Tenant</h2>
+              <p className="text-xs text-violet-100">Create organization and assign primary Tenant Admin</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1.5 hover:bg-white/20 rounded-lg transition-colors">
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Form */}
+        <form onSubmit={handleSubmit} className="p-6 space-y-5 max-h-[80vh] overflow-y-auto">
+          {/* Section 1: Tenant Details */}
+          <div>
+            <h3 className="text-xs font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400 mb-3 flex items-center gap-1.5">
+              <Building2 size={14} /> Organization Details
+            </h3>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-light-text-secondary dark:text-dark-text-secondary mb-1">
+                  Tenant Organization Name *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={formData.tenant_name}
+                  onChange={(e) => setFormData({ ...formData, tenant_name: e.target.value })}
+                  placeholder="e.g. Department of Transportation, Acme Corp"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-light-border dark:border-dark-border bg-light-surface dark:bg-dark-surface-alt text-sm text-light-text-primary dark:text-dark-text-primary focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-light-text-secondary dark:text-dark-text-secondary mb-1">
+                    Category
+                  </label>
+                  <select
+                    value={formData.category}
+                    onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-light-border dark:border-dark-border bg-light-surface dark:bg-dark-surface-alt text-sm text-light-text-primary dark:text-dark-text-primary focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    <option value="Federal Agency">Federal Agency</option>
+                    <option value="Financial Services">Financial Services</option>
+                    <option value="Logistics & Postal">Logistics & Postal</option>
+                    <option value="Healthcare & Life Sciences">Healthcare & Life Sciences</option>
+                    <option value="E-Commerce & Retail">E-Commerce & Retail</option>
+                    <option value="Enterprise Software">Enterprise Software</option>
+                    <option value="Sandbox">Sandbox</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-light-text-secondary dark:text-dark-text-secondary mb-1">
+                    Slug Preview
+                  </label>
+                  <input
+                    type="text"
+                    disabled
+                    value={formData.tenant_name.toLowerCase().replace(/[^a-z0-9]/g, '-') || 'auto-generated'}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-light-border dark:border-dark-border bg-slate-100 dark:bg-slate-800 text-xs font-mono text-slate-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-light-text-secondary dark:text-dark-text-secondary mb-1">
+                  Description
+                </label>
+                <textarea
+                  rows={2}
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  placeholder="Summary of workflows, services, or business purpose..."
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-light-border dark:border-dark-border bg-light-surface dark:bg-dark-surface-alt text-sm text-light-text-primary dark:text-dark-text-primary focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="h-px bg-light-border dark:bg-dark-border" />
+
+          {/* Section 2: Tenant Admin Provisioning */}
+          <div>
+            <h3 className="text-xs font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400 mb-3 flex items-center gap-1.5">
+              <Shield size={14} /> Initial Tenant Admin Account
+            </h3>
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-light-text-secondary dark:text-dark-text-secondary mb-1">
+                    Admin Full Name *
+                  </label>
+                  <div className="relative">
+                    <User size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-light-text-secondary dark:text-dark-text-secondary" />
+                    <input
+                      type="text"
+                      required
+                      value={formData.admin_name}
+                      onChange={(e) => setFormData({ ...formData, admin_name: e.target.value })}
+                      placeholder="e.g. Alex Mercer"
+                      className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-light-border dark:border-dark-border bg-light-surface dark:bg-dark-surface-alt text-sm text-light-text-primary dark:text-dark-text-primary focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-light-text-secondary dark:text-dark-text-secondary mb-1">
+                    Admin Email *
+                  </label>
+                  <div className="relative">
+                    <Mail size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-light-text-secondary dark:text-dark-text-secondary" />
+                    <input
+                      type="email"
+                      required
+                      value={formData.admin_email}
+                      onChange={(e) => setFormData({ ...formData, admin_email: e.target.value })}
+                      placeholder="e.g. admin@dot.gov"
+                      className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-light-border dark:border-dark-border bg-light-surface dark:bg-dark-surface-alt text-sm text-light-text-primary dark:text-dark-text-primary focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-light-text-secondary dark:text-dark-text-secondary mb-1">
+                  Initial Password
+                </label>
+                <div className="relative">
+                  <Lock size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-light-text-secondary dark:text-dark-text-secondary" />
+                  <input
+                    type="password"
+                    value={formData.admin_password}
+                    onChange={(e) => setFormData({ ...formData, admin_password: e.target.value })}
+                    placeholder="Defaults to password123 if left blank"
+                    className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-light-border dark:border-dark-border bg-light-surface dark:bg-dark-surface-alt text-sm text-light-text-primary dark:text-dark-text-primary focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Footer Actions */}
+          <div className="flex justify-end gap-3 pt-4 border-t border-light-border dark:border-dark-border">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2.5 text-sm font-semibold text-light-text-secondary dark:text-dark-text-secondary hover:bg-light-hover dark:hover:bg-dark-hover rounded-xl transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="flex items-center gap-2 px-5 py-2.5 text-sm font-bold text-white bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 disabled:opacity-50 rounded-xl transition-all duration-200 shadow-md"
+            >
+              {saving ? <RefreshCw size={14} className="animate-spin" /> : <Plus size={14} />}
+              Provision Tenant
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
 export const TenantManagementPage: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -45,6 +291,7 @@ export const TenantManagementPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [openMenu, setOpenMenu] = useState<string | null>(null);
+  const [showCreateModal, setShowCreateModal] = useState(false);
 
   const loadTenants = async () => {
     try {
@@ -61,11 +308,6 @@ export const TenantManagementPage: React.FC = () => {
 
   useEffect(() => {
     loadTenants();
-    // Check for impersonate param from dashboard shortcut
-    const imp = searchParams.get('impersonate');
-    if (imp) {
-      // Will be handled after tenants load
-    }
   }, []);
 
   const handleSuspend = async (t: Tenant) => {
@@ -158,7 +400,7 @@ export const TenantManagementPage: React.FC = () => {
               <RefreshCw size={16} className={`text-light-text-secondary dark:text-dark-text-secondary ${loading ? 'animate-spin' : ''}`} />
             </button>
             <button
-              onClick={() => navigate('/my-nodes')}
+              onClick={() => setShowCreateModal(true)}
               className="flex items-center gap-2 px-4 py-2.5 text-sm font-bold text-white bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 rounded-xl shadow-md transition-all duration-200"
             >
               <Plus size={16} />
@@ -306,6 +548,15 @@ export const TenantManagementPage: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Provision Tenant Modal */}
+      {showCreateModal && (
+        <CreateTenantModal
+          isOpen={showCreateModal}
+          onClose={() => setShowCreateModal(false)}
+          onCreated={loadTenants}
+        />
+      )}
     </div>
   );
 };

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   Boxes, Globe, GitBranch, Bot, FileText, Columns, GitMerge, Sliders, Workflow,
   ToggleLeft, ToggleRight, Search, ChevronDown, Settings, CheckCircle2, XCircle,
-  Building2, Save, RefreshCw,
+  Building2, Save, RefreshCw, Plus, X, Sparkles,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import * as api from '../TenantNodePlatform/tnpService';
@@ -11,7 +11,7 @@ import type { FrameworkNode, TenantNodeAccessItem, Tenant } from '../TenantNodeP
 // Icon map (matches backend seed)
 const ICON_MAP: Record<string, React.ElementType> = {
   Globe, GitBranch, Bot, FileText, Columns, GitMerge, Sliders, Workflow,
-  Box: Boxes,
+  Box: Boxes, Sparkles,
 };
 
 const CategoryColors: Record<string, string> = {
@@ -22,6 +22,188 @@ const CategoryColors: Record<string, string> = {
   'Control Flow': 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300',
   Data: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-950 dark:text-cyan-300',
   Composition: 'bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300',
+  Security: 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300',
+};
+
+// -------------------------------------------------------------------------
+// Create Framework Node Modal
+// -------------------------------------------------------------------------
+interface CreateFrameworkNodeModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onCreated: () => void;
+}
+
+const CreateFrameworkNodeModal: React.FC<CreateFrameworkNodeModalProps> = ({
+  isOpen,
+  onClose,
+  onCreated,
+}) => {
+  const [formData, setFormData] = useState({
+    node_type: '',
+    display_name: '',
+    description: '',
+    category: 'Integration',
+    icon: 'Globe',
+    canvas_type: 'serviceNode',
+  });
+  const [saving, setSaving] = useState(false);
+
+  if (!isOpen) return null;
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.node_type.trim() || !formData.display_name.trim()) {
+      toast.error('Please enter Node Type identifier and Display Name');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const normalizedType = formData.node_type.trim().toUpperCase().replace(/\s+/g, '_');
+      await api.createFrameworkNode({
+        node_type: normalizedType,
+        name: formData.display_name.toLowerCase().replace(/\s+/g, '_'),
+        display_name: formData.display_name.trim(),
+        description: formData.description.trim() || 'Custom Framework Node',
+        category: formData.category,
+        icon: formData.icon,
+        version: '1.0',
+        canvas_type: formData.canvas_type,
+        configuration_schema: {},
+        input_schema: {},
+        output_schema: {},
+      });
+      toast.success(`Framework Node "${formData.display_name}" registered successfully!`);
+      onCreated();
+      onClose();
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'Failed to create framework node');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+      <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-2xl w-full max-w-lg border border-light-border dark:border-dark-border overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-light-border dark:border-dark-border bg-gradient-to-r from-blue-600 to-indigo-600 text-white">
+          <div className="flex items-center gap-2.5">
+            <Boxes size={20} />
+            <div>
+              <h2 className="font-bold text-base">Register Framework Node</h2>
+              <p className="text-xs text-blue-100">Make a new node type available across all tenants</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1.5 hover:bg-white/20 rounded-lg transition-colors">
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Form */}
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-light-text-secondary dark:text-dark-text-secondary mb-1">
+              Display Name *
+            </label>
+            <input
+              type="text"
+              required
+              value={formData.display_name}
+              onChange={(e) => setFormData({ ...formData, display_name: e.target.value })}
+              placeholder="e.g. OCR Document Extractor, Vector Search"
+              className="w-full px-3.5 py-2.5 rounded-xl border border-light-border dark:border-dark-border bg-light-surface dark:bg-dark-surface-alt text-sm text-light-text-primary dark:text-dark-text-primary focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-light-text-secondary dark:text-dark-text-secondary mb-1">
+              Node Type Identifier (UPPERCASE) *
+            </label>
+            <input
+              type="text"
+              required
+              value={formData.node_type}
+              onChange={(e) => setFormData({ ...formData, node_type: e.target.value.toUpperCase() })}
+              placeholder="e.g. OCR_EXTRACTOR, VECTOR_SEARCH"
+              className="w-full px-3.5 py-2.5 rounded-xl border border-light-border dark:border-dark-border bg-light-surface dark:bg-dark-surface-alt text-sm font-mono text-light-text-primary dark:text-dark-text-primary focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-light-text-secondary dark:text-dark-text-secondary mb-1">
+                Category
+              </label>
+              <select
+                value={formData.category}
+                onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                className="w-full px-3.5 py-2.5 rounded-xl border border-light-border dark:border-dark-border bg-light-surface dark:bg-dark-surface-alt text-sm text-light-text-primary dark:text-dark-text-primary focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value="Integration">Integration</option>
+                <option value="Logic">Logic</option>
+                <option value="AI/ML">AI/ML</option>
+                <option value="Data">Data</option>
+                <option value="Security">Security</option>
+                <option value="Human-in-Loop">Human-in-Loop</option>
+                <option value="Control Flow">Control Flow</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-light-text-secondary dark:text-dark-text-secondary mb-1">
+                Canvas Base Type
+              </label>
+              <select
+                value={formData.canvas_type}
+                onChange={(e) => setFormData({ ...formData, canvas_type: e.target.value })}
+                className="w-full px-3.5 py-2.5 rounded-xl border border-light-border dark:border-dark-border bg-light-surface dark:bg-dark-surface-alt text-sm text-light-text-primary dark:text-dark-text-primary focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value="serviceNode">Service Node (REST API)</option>
+                <option value="decisionNode">Decision Node (Logic / Rules)</option>
+                <option value="llmNode">LLM Node (AI / Prompt)</option>
+                <option value="formNode">Form Node (Interactive)</option>
+                <option value="mapperNode">Mapper Node (Transform)</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-light-text-secondary dark:text-dark-text-secondary mb-1">
+              Description
+            </label>
+            <textarea
+              rows={2}
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              placeholder="Describe the functionality and purpose of this framework node type..."
+              className="w-full px-3.5 py-2.5 rounded-xl border border-light-border dark:border-dark-border bg-light-surface dark:bg-dark-surface-alt text-sm text-light-text-primary dark:text-dark-text-primary focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+            />
+          </div>
+
+          {/* Actions */}
+          <div className="flex justify-end gap-3 pt-3 border-t border-light-border dark:border-dark-border">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2.5 text-sm font-semibold text-light-text-secondary dark:text-dark-text-secondary hover:bg-light-hover dark:hover:bg-dark-hover rounded-xl transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="flex items-center gap-2 px-5 py-2.5 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 rounded-xl transition-all duration-200 shadow-md"
+            >
+              {saving ? <RefreshCw size={14} className="animate-spin" /> : <Plus size={14} />}
+              Register Node Type
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
 };
 
 // -------------------------------------------------------------------------
@@ -159,8 +341,10 @@ export const FrameworkNodeLibrary: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTenant, setSelectedTenant] = useState<Tenant | null>(null);
+  const [showCreateModal, setShowCreateModal] = useState(false);
 
-  useEffect(() => {
+  const loadData = () => {
+    setLoading(true);
     Promise.all([
       api.listFrameworkNodes(),
       api.listTenants(),
@@ -172,6 +356,10 @@ export const FrameworkNodeLibrary: React.FC = () => {
       setNodes([]);
       setTenants([]);
     }).finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    loadData();
   }, []);
 
   const safeNodes = Array.isArray(nodes) ? nodes : [];
@@ -204,6 +392,13 @@ export const FrameworkNodeLibrary: React.FC = () => {
               </p>
             </div>
           </div>
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className="flex items-center gap-2 px-4 py-2.5 text-sm font-bold text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 rounded-xl shadow-md transition-all duration-200"
+          >
+            <Plus size={16} />
+            New Node Type
+          </button>
         </div>
 
         {/* Tenant Node Access Configurator */}
@@ -296,6 +491,15 @@ export const FrameworkNodeLibrary: React.FC = () => {
           ))
         )}
       </div>
+
+      {/* Create Framework Node Modal */}
+      {showCreateModal && (
+        <CreateFrameworkNodeModal
+          isOpen={showCreateModal}
+          onClose={() => setShowCreateModal(false)}
+          onCreated={loadData}
+        />
+      )}
 
       {/* Node Access Panel Modal */}
       {selectedTenant && (

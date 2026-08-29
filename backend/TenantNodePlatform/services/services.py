@@ -37,6 +37,7 @@ from ..repositories.in_memory import (
     InMemoryTenantRepository,
     InMemoryUserRepository,
 )
+from ..security import create_access_token, hash_password, verify_password
 
 
 class TenantService:
@@ -235,6 +236,16 @@ class AuthService:
         if not user:
             raise ValueError(f"User with email '{req.email}' not found.")
 
+        # Password verification if password provided
+        if req.password and not verify_password(req.password, user.password_hash):
+            raise ValueError("Invalid password.")
+
+        # Check if user's tenant is suspended
+        if user.role != UserRole.SUPER_ADMIN and user.tenant_id != "all":
+            t = self._tenant_repo.get_tenant(user.tenant_id)
+            if t and t.status == "suspended":
+                raise ValueError(f"Tenant '{t.tenant_name}' is currently suspended. Access is blocked.")
+
         effective_tenant_id = user.tenant_id
         effective_tenant_name = user.tenant_name
 
@@ -259,7 +270,13 @@ class AuthService:
         )
 
         all_tenants = self._tenant_repo.list_tenants()
-        token = f"tnp-jwt-{user.id}-{int(dt.datetime.now(dt.UTC).timestamp())}"
+        token = create_access_token({
+            "sub": user.id,
+            "email": user.email,
+            "role": user.role.value,
+            "tenant_id": effective_tenant_id,
+            "tenant_name": effective_tenant_name,
+        })
 
         return LoginResponse(
             success=True,
@@ -349,7 +366,7 @@ class UserService:
             tenant_name=tenant_name,
             avatar=create.avatar or "👤",
             title=create.title or "Workflow Operator",
-            password_hash=create.password or "password123",
+            password_hash=hash_password(create.password or "password123"),
         )
         saved = self._user_repo.create_user(user)
         return UserProfile(

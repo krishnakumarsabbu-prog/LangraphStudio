@@ -245,6 +245,11 @@ export async function listFrameworkNodes() {
   return res.data.items;
 }
 
+export async function createFrameworkNode(data: Record<string, unknown>) {
+  const res = await client.post('/framework-nodes', data);
+  return res.data;
+}
+
 export async function updateFrameworkNode(nodeId: string, updates: Record<string, unknown>) {
   const res = await client.put(`/framework-nodes/${nodeId}`, updates);
   return res.data;
